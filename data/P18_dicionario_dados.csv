@@ -1,0 +1,26 @@
+arquivo,coluna,descricao
+clientes.csv,id_cliente,Identificador único do cliente
+clientes.csv,nome,Nome completo
+clientes.csv,data_nascimento,Data de nascimento
+clientes.csv,genero,Gênero
+clientes.csv,cidade_residencia,Cidade onde reside
+clientes.csv,estado_residencia,Estado de residência
+clientes.csv,profissao,Profissão declarada
+clientes.csv,renda_mensal,Renda mensal estimada
+clientes.csv,nivel_educacional,Nível de escolaridade
+clientes.csv,qtd_dependentes,Número de dependentes
+clientes.csv,data_cadastro,Data de entrada do cliente na base
+contratos.csv,id_contrato,Identificador único do contrato
+contratos.csv,id_cliente,ID do cliente associado
+contratos.csv,tipo_seguro,Tipo do seguro contratado
+contratos.csv,data_inicio,Data de início da apólice
+contratos.csv,data_fim,Data de fim da vigência
+contratos.csv,valor_premio_mensal,Valor mensal pago pelo seguro
+contratos.csv,satisfacao_ultima_avaliacao,Avaliação de satisfação mais recente
+contratos.csv,canal_venda,Canal onde o contrato foi realizado
+contratos.csv,renovado_automaticamente,Se o contrato foi renovado automaticamente
+cancelamentos.csv,id_contrato,ID do contrato cancelado
+cancelamentos.csv,data_cancelamento,Data em que ocorreu o cancelamento
+cancelamentos.csv,motivo_cancelamento,Motivo declarado do cancelamento
+cancelamentos.csv,canal_cancelamento,Canal utilizado para cancelar
+cancelamentos.csv,avaliacao_experiencia_cancelamento,Avaliação da experiência no cancelamento
