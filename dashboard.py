@@ -26,9 +26,9 @@ def load_data() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     try:
         with st.spinner('Carregando dados...'):
-            df_clientes = pd.read_csv(BASE_PATH / 'P18_clientes.csv')
-            df_contratos = pd.read_csv(BASE_PATH / 'P18_contratos.csv')
-            df_cancelamentos = pd.read_csv(BASE_PATH / 'P18_cancelamentos.csv')
+            df_clientes = pd.read_csv(r'C:\Users\Usuario\OneDrive\Documentos\final-project\final-project\data\P18_clientes.csv')
+            df_contratos = pd.read_csv(r'C:\Users\Usuario\OneDrive\Documentos\final-project\final-project\data\P18_contratos.csv')
+            df_cancelamentos = pd.read_csv(r'C:\Users\Usuario\OneDrive\Documentos\final-project\final-project\data\P18_cancelamentos.csv')
             
             # Pré-processamento de clientes
             df_clientes['data_nascimento'] = pd.to_datetime(df_clientes['data_nascimento'], errors='coerce')
