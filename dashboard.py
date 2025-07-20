@@ -3,410 +3,556 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
-from typing import Tuple, Dict, Any, Optional
+import plotly.express as px
+import plotly.graph_objects as go
 import logging
 
-# --- CONSTANTES E CONFIGURAÇÕES ---
-BASE_PATH = Path(r'C:\Users\Aluno\Documents\GitHub\final-project\data')
-FAIXA_ETARIA_BINS = [18, 30, 45, 60, 100]
-FAIXA_ETARIA_LABELS = ['18-29', '30-44', '45-59', '60+']
+# --- CONSTANTES ---
+BASE_PATH = Path(__file__).resolve().parent / 'data'
+FAIXA_ETARIA = ([18, 30, 45, 60, 100], ['18-29', '30-44', '45-59', '60+'])
 SATISFACAO_MAP = {'Baixa': 1, 'Média': 2, 'Alta': 3}
 
-# Configuração básica de logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# --- CARREGAMENTO DE DADOS ---
+# --- CARREGAMENTO ---
 @st.cache_data
-def load_data() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Carrega e pré-processa os dados principais
-    
-    Returns:
-        Tuple contendo (df_clientes, df_contratos, df_cancelamentos)
-    """
+def load_data():
+    """Carrega e pré-processa os dados principais"""
     try:
-        with st.spinner('Carregando dados...'):
-            df_clientes = pd.read_csv(BASE_PATH / 'P18_clientes.csv')
-            df_contratos = pd.read_csv(BASE_PATH / 'P18_contratos.csv')
-            df_cancelamentos = pd.read_csv(BASE_PATH / 'P18_cancelamentos.csv')
+        dfs = [pd.read_csv(BASE_PATH / f) for f in [
+            'P18_clientes.csv', 'P18_contratos.csv', 'P18_cancelamentos.csv']]
+        
+        # Clientes
+        dfs[0]['data_nascimento'] = pd.to_datetime(dfs[0]['data_nascimento'], errors='coerce')
+        dfs[0]['idade'] = (pd.Timestamp.now() - dfs[0]['data_nascimento']).dt.days // 365
+        dfs[0]['faixa_etaria'] = pd.cut(dfs[0]['idade'], *FAIXA_ETARIA)
+        dfs[0]['data_cadastro'] = pd.to_datetime(dfs[0]['data_cadastro'], errors='coerce')
+        
+        # Contratos
+        dfs[1]['data_inicio'] = pd.to_datetime(dfs[1]['data_inicio'], errors='coerce')
+        dfs[1]['data_fim'] = pd.to_datetime(dfs[1]['data_fim'], errors='coerce')
+        dfs[1]['duracao_contrato'] = (dfs[1]['data_fim'] - dfs[1]['data_inicio']).dt.days
+        dfs[1]['satisfacao_numerica'] = dfs[1]['satisfacao_ultima_avaliacao'].map(SATISFACAO_MAP)
+        dfs[1]['valor_premio_mensal'] = dfs[1].get('valor_premio_mensal', 100)
+        
+        # Cancelamentos
+        dfs[2]['avaliacao_experiencia_numerica'] = dfs[2][
+            'avaliacao_experiencia_cancelamento'].map(SATISFACAO_MAP)
             
-            # Pré-processamento de clientes
-            df_clientes['data_nascimento'] = pd.to_datetime(df_clientes['data_nascimento'], errors='coerce')
-            df_clientes['idade'] = (pd.Timestamp.now() - df_clientes['data_nascimento']).dt.days // 365
-            df_clientes['faixa_etaria'] = pd.cut(df_clientes['idade'], bins=FAIXA_ETARIA_BINS, 
-                                                labels=FAIXA_ETARIA_LABELS, right=False)
-            df_clientes['data_cadastro'] = pd.to_datetime(df_clientes['data_cadastro'], errors='coerce')
-            
-            # Pré-processamento de contratos
-            df_contratos['data_inicio'] = pd.to_datetime(df_contratos['data_inicio'], errors='coerce')
-            df_contratos['data_fim'] = pd.to_datetime(df_contratos['data_fim'], errors='coerce')
-            df_contratos['duracao_contrato'] = (df_contratos['data_fim'] - df_contratos['data_inicio']).dt.days
-            df_contratos['satisfacao_numerica'] = df_contratos['satisfacao_ultima_avaliacao'].map(SATISFACAO_MAP)
-            
-            # Verifica se a coluna valor_mensal existe, caso contrário cria com valores padrão
-            if 'valor_mensal' not in df_contratos.columns:
-                df_contratos['valor_mensal'] = 100  # Valor padrão para demonstração
-            
-            # Pré-processamento de cancelamentos
-            df_cancelamentos['avaliacao_experiencia_numerica'] = (
-                df_cancelamentos['avaliacao_experiencia_cancelamento'].map(SATISFACAO_MAP)
-            )
-            
-            logger.info("Dados carregados e pré-processados com sucesso")
-            return df_clientes, df_contratos, df_cancelamentos
+        return dfs
+        
     except Exception as e:
-        logger.error(f"Erro ao carregar dados: {str(e)}")
-        st.error("Erro ao carregar os dados. Verifique os arquivos de entrada.")
+        st.error(f"Erro ao carregar dados: {str(e)}")
         raise
 
-# Carrega os dados
-try:
-    df_clientes, df_contratos, df_cancelamentos = load_data()
-except:
-    st.stop()
+# --- FUNÇÕES ---
+def calcular_nps(satisfacao_series):
+    """Calcula o NPS a partir de uma série de satisfação numérica (1-3)"""
+    satisf = satisfacao_series.dropna()
+    detratores = satisf[satisf <= 1.5].count()
+    promotores = satisf[satisf > 2.5].count()
+    total = detratores + satisf.between(1.5, 2.5).sum() + promotores
+    return round((promotores - detratores) / total * 100, 2) if total > 0 else "N/A"
 
-# --- FUNÇÕES AUXILIARES ---
-def calcular_nps(satisfacao_series: pd.Series) -> float:
-    """Calcula o NPS a partir de uma série de satisfação numérica (1-3)
-    
-    Args:
-        satisfacao_series: Série pandas com valores de satisfação (1-3)
-        
-    Returns:
-        Valor do NPS calculado ou "N/A" se não houver dados
-    """
-    try:
-        satisf = satisfacao_series.dropna()
-        
-        # Definindo os limites corretos para NPS em escala 1-3
-        detratores = satisf[satisf <= 1.5].count()  # 1.0-1.5: Detratores (1)
-        promotores = satisf[satisf > 2.5].count()   # 2.5-3.0: Promotores (3)
-        neutros = satisf[(satisf > 1.5) & (satisf <= 2.5)].count()  # 1.5-2.5: Neutros (2)
-        
-        total_respostas = detratores + neutros + promotores
-        
-        if total_respostas > 0:
-            nps = ((promotores - detratores) / total_respostas) * 100
-            return round(nps, 2)
-        return "N/A"
-    except Exception as e:
-        logger.error(f"Erro ao calcular NPS: {str(e)}")
-        return "N/A"
+@st.cache_data
+def criar_df_completo(df_clientes, df_contratos, df_cancelamentos):
+    """Combina todos os DataFrames"""
+    df = pd.merge(df_contratos, df_clientes, on='id_cliente', how='left')
+    df['cancelado'] = df['id_contrato'].isin(df_cancelamentos['id_contrato'])
+    df['faixa_etaria'] = pd.cut(df['idade'], *FAIXA_ETARIA)
+    return df
 
-def criar_df_completo() -> pd.DataFrame:
-    """Cria um DataFrame combinado com todas as informações
-    
-    Returns:
-        DataFrame combinado com informações de clientes, contratos e cancelamentos
-    """
-    try:
-        with st.spinner('Combinando dados...'):
-            df_all = pd.merge(df_contratos, df_clientes, on='id_cliente', how='left')
-            df_all['cancelado'] = df_all['id_contrato'].isin(df_cancelamentos['id_contrato'])
-            df_all['faixa_etaria'] = pd.cut(df_all['idade'], bins=FAIXA_ETARIA_BINS, 
-                                           labels=FAIXA_ETARIA_LABELS, right=False)
-            return df_all
-    except Exception as e:
-        logger.error(f"Erro ao criar DataFrame completo: {str(e)}")
-        st.error("Erro ao processar os dados. Tente recarregar a página.")
-        raise
-
-def criar_grafico_padrao(tipo: str = 'bar', **kwargs) -> plt.Figure:
-    """Cria gráficos com estilo padronizado
-    
-    Args:
-        tipo: Tipo de gráfico ('bar', 'line', 'pie')
-        **kwargs: Argumentos específicos para cada tipo de gráfico
-        
-    Returns:
-        Figura matplotlib configurada
-    """
-    try:
-        plt.style.use('seaborn')
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        if tipo == 'bar':
-            sns.barplot(**kwargs, ax=ax)
-            ax.set_xlabel(kwargs.get('xlabel', ''))
-            ax.set_ylabel(kwargs.get('ylabel', ''))
-        elif tipo == 'line':
-            sns.lineplot(**kwargs, ax=ax)
-        elif tipo == 'pie':
-            ax.pie(**kwargs)
-            ax.axis('equal')
-        
-        ax.set_title(kwargs.get('title', ''))
-        ax.grid(True, linestyle='--', alpha=0.7)
-        return fig
-    except Exception as e:
-        logger.error(f"Erro ao criar gráfico: {str(e)}")
-        raise
+def criar_grafico(tipo='bar', **kwargs):
+    """Cria gráficos com estilo padronizado"""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    {
+        'bar': lambda: sns.barplot(**kwargs, ax=ax),
+        'line': lambda: sns.lineplot(**kwargs, ax=ax),
+        'pie': lambda: ax.pie(**kwargs) or ax.axis('equal')
+    }.get(tipo, lambda: None)()
+    ax.set_title(kwargs.get('title', ''))
+    ax.grid(True, linestyle='--', alpha=0.7)
+    return fig
 
 # --- VISÕES ---
-def view_visao_geral():
+def view_visao_geral(df_clientes, df_contratos, df_cancelamentos):
     """Mostra a visão geral da saúde da base de clientes"""
     st.header("🔵 Visão Geral – Saúde da Base")
-
-    total_clientes = df_clientes['id_cliente'].nunique()
-    total_contratos = df_contratos['id_contrato'].nunique()
-    total_cancelamentos = df_cancelamentos['id_contrato'].nunique()
-    contratos_ativos = total_contratos - total_cancelamentos
-    churn_rate = total_cancelamentos / total_contratos if total_contratos > 0 else 0
-    renovados = df_contratos['renovado_automaticamente'].value_counts(normalize=True).get(True, 0)
-    satisfacao_media = df_contratos['satisfacao_numerica'].mean()
-    tipos_seguro = df_contratos['tipo_seguro'].value_counts()
-
-    # Métricas
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Clientes", total_clientes)
-    col2.metric("Contratos Ativos", contratos_ativos)
-    col3.metric("Cancelamentos", total_cancelamentos)
-
-    col4, col5, col6 = st.columns(3)
-    col4.metric("% Churn", f"{churn_rate*100:.2f}%")
-    col5.metric("% Renovados", f"{renovados*100:.1f}%")
-    col6.metric("Satisfação Média", f"{satisfacao_media:.2f}")
-
-    # Gráfico de tipos de seguro
-    st.subheader("Distribuição por Tipo de Seguro")
-    fig, ax = plt.subplots()
-    ax.pie(tipos_seguro, labels=tipos_seguro.index, autopct='%1.1f%%', startangle=90)
-    ax.axis('equal')
-    st.pyplot(fig)
-
-def view_perfil_cliente():
-    """Mostra análises do perfil dos clientes"""
-    st.header("🟡 Perfil do Cliente")
-
-    # Gráficos de distribuição
-    st.subheader("Distribuição por Faixa Etária")
-    st.bar_chart(df_clientes['faixa_etaria'].value_counts().sort_index())
-
-    st.subheader("Distribuição por Gênero")
-    st.bar_chart(df_clientes['genero'].value_counts())
-
-    st.subheader("Distribuição por Escolaridade")
-    st.bar_chart(df_clientes['nivel_educacional'].value_counts())
-
-    st.subheader("Distribuição por Profissão (Top 10)")
-    st.dataframe(df_clientes['profissao'].value_counts().head(10))
-
-    st.subheader("Distribuição por Estado")
-    st.bar_chart(df_clientes['estado_residencia'].value_counts())
-
-    # Métricas
-    col1, col2 = st.columns(2)
-    col1.metric("Média de Dependentes", f"{df_clientes['qtd_dependentes'].mean():.2f}")
     
-    contratos_por_cliente = df_contratos['id_cliente'].value_counts()
-    multiplos = contratos_por_cliente[contratos_por_cliente > 1].count()
-    col2.metric("Clientes com múltiplos contratos", multiplos)
+    # Dados calculados
+    total_contratos = len(df_contratos)
+    cancelamentos = len(df_cancelamentos)
+    taxa_churn = (cancelamentos/total_contratos)*100 if total_contratos else 0
+    taxa_renovacao = df_contratos['renovado_automaticamente'].mean()*100
+    satisfacao_media = df_contratos['satisfacao_numerica'].mean()
+    
+    # Layout em 3 seções como na imagem de referência
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("### 📊 Série 1")
+        st.markdown("**Clientes Ativos**")
+        st.metric("", len(df_clientes), help="Total de clientes na base")
+        
+        st.markdown("**Contratos Ativos**")
+        st.metric("", total_contratos - cancelamentos, help="Contratos não cancelados")
+        
+        st.markdown("**Cancelamentos**")
+        st.metric("", cancelamentos, help="Total de cancelamentos")
+    
+    with col2:
+        st.markdown("### 📈 Série 2")
+        st.markdown("**Distribuição por Tipo de Seguro**")
+        
+        # Gráfico de pizza estilizado
+        fig = plt.figure(figsize=(6,6))
+        tipos = df_contratos['tipo_seguro'].value_counts()
+        plt.pie(tipos, labels=tipos.index, autopct='%1.1f%%', 
+                startangle=90, colors=['#3498db','#2ecc71','#e74c3c','#f39c12'])
+        plt.axis('equal')
+        st.pyplot(fig)
+        
+    with col3:
+        st.markdown("### 📊 Indicadores")
+        
+        # Indicador circular para % Churn
+        st.markdown(f"**Churn Rate**")
+        st.markdown(f"<div style='font-size:24px;text-align:center;'>{taxa_churn:.1f}%</div>", 
+                   unsafe_allow_html=True)
+        st.progress(taxa_churn/100)
+        
+        # Indicador circular para % Renovados
+        st.markdown(f"**Renovados Automático**")
+        st.markdown(f"<div style='font-size:24px;text-align:center;'>{taxa_renovacao:.1f}%</div>", 
+                   unsafe_allow_html=True)
+        st.progress(taxa_renovacao/100)
+        
+        # Indicador de satisfação
+        st.markdown(f"**Satisfação Média**")
+        st.markdown(f"<div style='font-size:24px;text-align:center;'>{satisfacao_media:.2f}</div>", 
+                   unsafe_allow_html=True)
+        st.progress(satisfacao_media/3)
 
-    # Filtros dinâmicos
-    st.subheader("Filtros Dinâmicos")
-    genero_sel = st.multiselect("Gênero", df_clientes['genero'].unique())
-    tipo_sel = st.multiselect("Tipo de Seguro", df_contratos['tipo_seguro'].unique())
+def view_perfil_cliente(df_clientes, df_contratos):
+    """Mostra análises do perfil dos clientes com layout profissional"""
+    st.header("🟡 Perfil do Cliente")
+    
+    # Dados calculados
+    media_dependentes = df_clientes['qtd_dependentes'].mean()
+    multiplos_contratos = (df_contratos['id_cliente'].value_counts() > 1).sum()
+    
+    # Layout em 3 seções principais
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("### 📊 Distribuições Demográficas")
+        
+        # Gráfico de Faixa Etária
+        st.markdown("**Faixa Etária**")
+        faixa_counts = df_clientes['faixa_etaria'].value_counts().sort_index()
+        faixa_counts.index = faixa_counts.index.astype(str)
+        st.bar_chart(faixa_counts, color='#3498db')
+        
+        # Gráficos em abas
+        tab1, tab2, tab3 = st.tabs(["Gênero", "Escolaridade", "Estado"])
+        
+        with tab1:
+            st.markdown("**Distribuição por Gênero**")
+            st.bar_chart(df_clientes['genero'].value_counts(), color='#2ecc71')
+            
+        with tab2:
+            st.markdown("**Nível Educacional**")
+            st.bar_chart(df_clientes['nivel_educacional'].value_counts(), color='#e74c3c')
+            
+        with tab3:
+            st.markdown("**Estado de Residência**")
+            st.bar_chart(df_clientes['estado_residencia'].value_counts(), color='#f39c12')
+    
+    with col2:
+        st.markdown("### 📈 Indicadores-Chave")
+        
+        # Métricas principais
+        st.markdown("**Média de Dependentes**")
+        st.markdown(f"<div style='font-size:28px; text-align:center; padding:10px; "
+                   f"background-color:#f8f9fa; border-radius:10px;'>{media_dependentes:.2f}</div>",
+                   unsafe_allow_html=True)
+        
+        st.markdown("**Clientes com Múltiplos Contratos**")
+        st.markdown(f"<div style='font-size:28px; text-align:center; padding:10px; "
+                   f"background-color:#f8f9fa; border-radius:10px;'>{multiplos_contratos}</div>",
+                   unsafe_allow_html=True)
+        
+        st.markdown("### 🔝 Top Profissões")
+        top_profissoes = df_clientes['profissao'].value_counts().head(10)
+        st.dataframe(
+            top_profissoes.reset_index().rename(columns={'index':'Profissão', 'profissao':'Contagem'}),
+            height=400,
+            hide_index=True
+        )
 
-    df_filtrado = pd.merge(df_clientes, df_contratos, on='id_cliente')
-    if genero_sel:
-        df_filtrado = df_filtrado[df_filtrado['genero'].isin(genero_sel)]
-    if tipo_sel:
-        df_filtrado = df_filtrado[df_filtrado['tipo_seguro'].isin(tipo_sel)]
-
-    st.dataframe(df_filtrado[['id_cliente', 'genero', 'idade', 'tipo_seguro', 'renda_mensal']].head())
-
-def view_produtos_planos():
-    """Mostra análises específicas de produtos e planos de seguro"""
+def view_produtos_planos(df_contratos):
+    """Mostra análises de produtos e planos com layout profissional"""
     st.header("🔴 Produtos e Planos de Seguro")
     
-    # Análise de tipos de seguro
-    st.subheader("Distribuição de Planos por Tipo")
+    # Dados calculados
     tipo_dist = df_contratos['tipo_seguro'].value_counts()
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.barplot(x=tipo_dist.values, y=tipo_dist.index, palette='viridis', ax=ax)
-    ax.set_xlabel('Quantidade de Contratos')
-    ax.set_ylabel('Tipo de Seguro')
-    st.pyplot(fig)
     
-    # Métricas por tipo de seguro - versão segura
-    st.subheader("Métricas por Tipo de Seguro")
+    # Layout em 2 colunas principais
+    col1, col2 = st.columns([1, 1])
     
-    # Cria um dicionário com as colunas disponíveis
+    with col1:
+        st.markdown("### 📊 Distribuição de Planos")
+        
+        # Gráfico de barras horizontal moderno
+        st.plotly_chart(px.bar(
+            tipo_dist.reset_index(),
+            x='count',
+            y='tipo_seguro',
+            orientation='h',
+            color='tipo_seguro',
+            color_discrete_sequence=px.colors.qualitative.Pastel,
+            labels={'count': 'Número de Contratos', 'tipo_seguro': 'Tipo de Seguro'},
+            height=400
+        ).update_layout(showlegend=False), use_container_width=True)
+        
+    with col2:
+        st.markdown("### 📈 Satisfação por Plano")
+        
+        # Gráfico de satisfação
+        satisfacao_por_tipo = df_contratos.groupby('tipo_seguro')['satisfacao_numerica'].mean()
+        st.plotly_chart(px.bar(
+            satisfacao_por_tipo.reset_index(),
+            x='tipo_seguro',
+            y='satisfacao_numerica',
+            color='tipo_seguro',
+            color_discrete_sequence=px.colors.qualitative.Pastel,
+            labels={'satisfacao_numerica': 'Satisfação Média', 'tipo_seguro': 'Tipo de Seguro'},
+            height=400
+        ).update_layout(showlegend=False), use_container_width=True)
+    
+    # Seção de métricas detalhadas
+    st.markdown("### 📋 Métricas por Tipo de Seguro")
+    
     metricas = {
         'duracao_contrato': 'Duração Média (dias)',
         'satisfacao_numerica': 'Satisfação Média',
-        'id_contrato': 'Total Contratos'
+        'id_contrato': 'Total Contratos',
+        **({'valor_premio_mensal': 'Valor Médio'} if 'valor_premio_mensal' in df_contratos.columns else {})
     }
     
-    # Adiciona valor_mensal apenas se existir no DataFrame
-    if 'valor_mensal' in df_contratos.columns:
-        metricas['valor_mensal'] = 'Valor Médio'
+    df_metricas = df_contratos.groupby('tipo_seguro').agg({
+        col: 'mean' if col != 'id_contrato' else 'count' for col in metricas
+    }).rename(columns=metricas)
     
-    metricas_seguro = df_contratos.groupby('tipo_seguro').agg({
-        col: 'mean' if col != 'id_contrato' else 'count' 
-        for col in metricas.keys()
-    }).rename(columns=metricas).sort_values('Total Contratos', ascending=False)
-    
-    # Formatação condicional
-    format_dict = {
-        'Duração Média (dias)': '{:.1f}',
-        'Satisfação Média': '{:.2f}'
-    }
-    
-    if 'Valor Médio' in metricas_seguro.columns:
-        format_dict['Valor Médio'] = 'R$ {:.2f}'
-    
-    st.dataframe(metricas_seguro.style.format(format_dict))
-
-def view_satisfacao_experiencia():
-    """Mostra análises de satisfação e experiência do cliente"""
-    st.header("🟢 Satisfação e Experiência")
-
-    # Análise de satisfação por tipo de seguro
-    st.subheader("Satisfação × Tipo de Seguro")
-    media_satisf = df_contratos.groupby('tipo_seguro')['satisfacao_numerica'].mean().sort_values()
-    st.bar_chart(media_satisf)
-
-    # Análise por canal
-    st.subheader("Nota Média por Canal de Venda")
-    canal_venda_media = df_contratos.groupby('canal_venda')['satisfacao_numerica'].mean().sort_values()
-    st.bar_chart(canal_venda_media)
-
-    st.subheader("Canais de Cancelamento mais Frequentes")
-    st.bar_chart(df_cancelamentos['canal_cancelamento'].value_counts())
-
-    # NPS com cálculo revisado
-    st.subheader("NPS Estimado (Escala 1-3)")
-    nps = calcular_nps(df_contratos['satisfacao_numerica'])
-    
-    # Explicação do cálculo
-    with st.expander("Como interpretar este NPS?"):
-        st.markdown("""
-        **NPS em escala 1-3:**
-        - **1 (Baixa satisfação)**: Detratores
-        - **2 (Média satisfação)**: Neutros  
-        - **3 (Alta satisfação)**: Promotores
-        
-        **Fórmula:**  
-        `NPS = (% Promotores) - (% Detratores)`  
-        *Valores podem variar entre -100 (todos detratores) e +100 (todos promotores)*
-        
-        **Seu resultado:** {}
-        """.format(nps))
-    
-    st.metric("NPS Estimado", f"{nps}")
-
-def view_retencao_churn():
-    """Mostra análises de retenção e churn"""
-    st.header("🟣 Retenção e Churn (Prevenção)")
-    df_all = criar_df_completo()
-
-    # Perfil dos canceladores
-    st.subheader("Perfil dos Canceladores")
-    df_cancel = df_all[df_all['cancelado']]
-    perfil = df_cancel[['idade', 'tipo_seguro', 'satisfacao_numerica']]
-    st.dataframe(perfil.describe(include='all'))
-
-    # Taxa de cancelamento para clientes com 1 contrato
-    st.subheader("Cancelamento em Clientes com 1 Contrato")
-    qtd_contratos = df_contratos['id_cliente'].value_counts()
-    um_contrato = qtd_contratos[qtd_contratos == 1].index
-    cancelaram = df_all[df_all['id_cliente'].isin(um_contrato)]['cancelado'].sum()
-    taxa = cancelaram / len(um_contrato) if len(um_contrato) > 0 else 0
-    st.metric("% Cancelaram com 1 contrato", f"{taxa*100:.2f}%")
-
-    # Renovação vs Cancelamento
-    st.subheader("Renovação × Cancelamento")
-    taxa_renovacao = df_all.groupby('renovado_automaticamente')['cancelado'].mean()
-    st.bar_chart(taxa_renovacao.rename(index={True: 'Renovaram', False: 'Não Renovaram'}))
-
-    # Duração do contrato vs Churn
-    st.subheader("Duração do Contrato × Risco de Churn")
-    st.line_chart(df_all.groupby('duracao_contrato')['cancelado'].mean())
-
-    # Identificação de clientes em risco
-    st.subheader("Ranking de Clientes em Risco")
-    df_all['risco'] = 'Baixo'
-    df_all.loc[(df_all['satisfacao_numerica'] == 1) & (df_all['duracao_contrato'] < 365), 'risco'] = 'Médio'
-    df_all.loc[(df_all['satisfacao_numerica'] == 1) & (df_all['duracao_contrato'] < 250), 'risco'] = 'Alto'
+    # Tabela estilizada
     st.dataframe(
-        df_all[['id_cliente', 'tipo_seguro', 'satisfacao_numerica', 'duracao_contrato', 'risco']]
-        .sort_values(by='risco', ascending=False)
-        .head(10)
+        df_metricas.style
+        .format({
+            'Duração Média (dias)': '{:.1f}',
+            'Satisfação Média': '{:.2f}',
+            **({'Valor Médio': 'R$ {:.2f}'} if 'Valor Médio' in df_metricas.columns else {})
+        })
+        .background_gradient(cmap='Blues', subset=['Satisfação Média'])
+        .background_gradient(cmap='Greens', subset=['Duração Média (dias)'])
+        .set_properties(**{'text-align': 'center'}),
+        height=400,
+        use_container_width=True
     )
 
-    # Recomendações
-    st.subheader("Ações Recomendadas para Retenção")
-    st.markdown("""
-    - **Alto risco**: Contato proativo, oferta de incentivos ou planos alternativos
-    - **Médio risco**: Monitoramento com campanhas de engajamento
-    - **Baixo risco**: Estratégias de fidelização e programas de benefícios
-    """)
-
-def view_insights_acoes():
-    """Mostra insights acionáveis"""
-    st.header("🟤 Insights e Ações")
-    df_all = criar_df_completo()
-
-    # Análises de churn
-    st.subheader("Planos com Maior e Menor Churn")
-    churn_tipo = df_all.groupby('tipo_seguro')['cancelado'].mean().sort_values(ascending=False)
+def view_satisfacao_experiencia(df_contratos, df_cancelamentos):
+    """Mostra análises de satisfação com layout profissional"""
+    st.header("🟢 Satisfação e Experiência")
     
-    col1, col2 = st.columns(2)
+    # Dados calculados
+    satisfacao_por_tipo = df_contratos.groupby('tipo_seguro')['satisfacao_numerica'].mean().sort_values()
+    satisfacao_por_canal = df_contratos.groupby('canal_venda')['satisfacao_numerica'].mean().sort_values()
+    canais_cancelamento = df_cancelamentos['canal_cancelamento'].value_counts()
+    nps = calcular_nps(df_contratos['satisfacao_numerica'])
+    
+    # Layout em 2 colunas principais
+    col1, col2 = st.columns([1, 1])
+    
     with col1:
-        st.write("**Piores planos (maior churn)**")
-        st.dataframe(churn_tipo.head(5).reset_index().rename(columns={'cancelado': 'Taxa de Cancelamento'}))
+        st.markdown("### 😊 Satisfação por Tipo de Seguro")
+        st.plotly_chart(px.bar(
+            satisfacao_por_tipo.reset_index(),
+            x='satisfacao_numerica',
+            y='tipo_seguro',
+            orientation='h',
+            color='satisfacao_numerica',
+            color_continuous_scale='Tealgrn',
+            labels={'satisfacao_numerica': 'Satisfação Média', 'tipo_seguro': 'Tipo de Seguro'},
+            height=400
+        ), use_container_width=True)
+        
+        st.markdown("### 📉 Canais de Cancelamento")
+        st.plotly_chart(px.bar(
+            canais_cancelamento.reset_index(),
+            x='count',
+            y='canal_cancelamento',
+            orientation='h',
+            color='count',
+            color_continuous_scale='Reds',
+            labels={'count': 'Número de Cancelamentos', 'canal_cancelamento': 'Canal'},
+            height=300
+        ), use_container_width=True)
     
     with col2:
-        st.write("**Melhores planos (menor churn)**")
-        st.dataframe(churn_tipo.tail(5).reset_index().rename(columns={'cancelado': 'Taxa de Cancelamento'}))
+        st.markdown("### 📞 Satisfação por Canal de Venda")
+        st.plotly_chart(px.bar(
+            satisfacao_por_canal.reset_index(),
+            x='canal_venda',
+            y='satisfacao_numerica',
+            color='satisfacao_numerica',
+            color_continuous_scale='Tealgrn',
+            labels={'satisfacao_numerica': 'Satisfação Média', 'canal_venda': 'Canal de Venda'},
+            height=400
+        ), use_container_width=True)
+        
+        st.markdown("### 📊 NPS Estimado")
+        # Indicador visual do NPS
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=nps if isinstance(nps, (int, float)) else 0,
+            number={'suffix': ''},
+            domain={'x': [0, 1], 'y': [0, 1]},
+            gauge={
+                'axis': {'range': [-100, 100]},
+                'bar': {'color': "#2ecc71"},
+                'steps': [
+                    {'range': [-100, 0], 'color': "#e74c3c"},
+                    {'range': [0, 50], 'color': "#f39c12"},
+                    {'range': [50, 100], 'color': "#2ecc71"}
+                ],
+                'threshold': {
+                    'line': {'color': "black", 'width': 4},
+                    'thickness': 0.75,
+                    'value': nps if isinstance(nps, (int, float)) else 0
+                }
+            }
+        ))
+        fig.update_layout(height=300, margin=dict(t=0, b=0))
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Legenda do NPS
+        st.markdown("""
+        <div style='background-color:#f8f9fa; border-radius:10px; padding:10px; margin-top:10px;'>
+            <p style='text-align:center;'>
+                <span style='color:#e74c3c;'>●</span> Detratores | 
+                <span style='color:#f39c12;'>●</span> Neutros | 
+                <span style='color:#2ecc71;'>●</span> Promotores
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # Análises demográficas
-    st.subheader("Análise Demográfica do Churn")
+def view_retencao_churn(df_completo):
+    """Mostra análises de retenção e churn com layout profissional"""
+    st.header("🟣 Retenção e Churn")
     
+    # Dados calculados
+    canceladores = df_completo[df_completo['cancelado']]
+    contratos_por_cliente = df_completo['id_cliente'].value_counts()
+    clientes_um_contrato = contratos_por_cliente[contratos_por_cliente == 1].index
+    taxa_cancelamento = df_completo[df_completo['id_cliente'].isin(clientes_um_contrato)]['cancelado'].mean()
+    relacao_renovacao = df_completo.groupby('renovado_automaticamente')['cancelado'].mean().rename(
+        {True: 'Renovaram', False: 'Não Renovaram'})
+    risco_churn = df_completo.groupby('duracao_contrato')['cancelado'].mean()
+    
+    # Layout em 2 colunas principais
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        st.markdown("### 📊 Perfil dos Canceladores")
+        
+        # CORREÇÃO: Estatísticas descritivas sem tentar estilizar colunas específicas
+        desc_stats = canceladores[['idade', 'tipo_seguro', 'satisfacao_numerica']].describe()
+        st.dataframe(
+            desc_stats.style
+            .format('{:.2f}')
+            .background_gradient(cmap='Reds')  # Aplica gradiente em todas as colunas numéricas
+            .set_properties(**{'text-align': 'center'}),
+            height=300
+        )
+        
+        st.markdown("### 📉 Risco de Churn por Duração")
+        st.plotly_chart(px.line(
+            risco_churn.reset_index(),
+            x='duracao_contrato',
+            y='cancelado',
+            labels={'duracao_contrato': 'Duração do Contrato (dias)', 'cancelado': 'Taxa de Cancelamento'},
+            color_discrete_sequence=['#e74c3c'],
+            height=300
+        ), use_container_width=True)
+    
+    with col2:
+        st.markdown("### 📌 Indicadores-Chave")
+        
+        # Card de taxa de cancelamento (com tratamento para NaN)
+        taxa_display = taxa_cancelamento*100 if not pd.isna(taxa_cancelamento) else 0
+        st.markdown("**Cancelamento com 1 Contrato**")
+        st.markdown(f"""
+        <div style='background-color:#f8f9fa; border-radius:10px; padding:20px; margin-bottom:20px;'>
+            <h3 style='color:#e74c3c; text-align:center; margin-top:0;'>
+                {taxa_display:.1f}%
+            </h3>
+            <p style='text-align:center;'>dos clientes com apenas 1 contrato cancelaram</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("### 🔄 Renovação vs Cancelamento")
+        st.plotly_chart(px.bar(
+            relacao_renovacao.reset_index(),
+            x='renovado_automaticamente',
+            y='cancelado',
+            color='renovado_automaticamente',
+            color_discrete_map={'Renovaram': '#2ecc71', 'Não Renovaram': '#e74c3c'},
+            labels={'cancelado': 'Taxa de Cancelamento', 'renovado_automaticamente': ''},
+            height=300
+        ).update_layout(showlegend=False), use_container_width=True)
+        
+        # Heatmap de risco
+        st.markdown("### 🔥 Fatores de Risco")
+        try:
+            st.plotly_chart(px.density_heatmap(
+                canceladores,
+                x='idade',
+                y='satisfacao_numerica',
+                nbinsx=10,
+                nbinsy=3,
+                color_continuous_scale='reds',
+                labels={'idade': 'Idade', 'satisfacao_numerica': 'Satisfação'}
+            ), use_container_width=True)
+        except Exception as e:
+            st.warning("Não foi possível gerar o heatmap de fatores de risco")
+            st.error(str(e))
+    
+def view_insights_acoes(df_completo):
+    """Mostra insights acionáveis com layout profissional"""
+    st.header("🟤 Insights e Ações")
+    
+    # Cria e prepara os dados
+    df = df_completo.copy()
+    df['faixa_etaria'] = df['faixa_etaria'].astype(str)
+    
+    # Dados calculados
+    churn_tipo = df.groupby('tipo_seguro')['cancelado'].mean().sort_values(ascending=False)
+    churn_faixa_etaria = df.groupby('faixa_etaria')['cancelado'].mean()
+    churn_profissao = df.groupby('profissao')['cancelado'].mean().nlargest(10)
+    churn_estado = df.groupby('estado_residencia')['cancelado'].mean().sort_values(ascending=False)
+    
+    # Layout principal
+    st.markdown("### 🔥 Planos com Maior Risco de Churn")
+    
+    # Gráfico e tabela lado a lado
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        st.plotly_chart(px.bar(
+            churn_tipo.head(5).reset_index(),
+            x='tipo_seguro',
+            y='cancelado',
+            color='tipo_seguro',
+            color_discrete_sequence=px.colors.sequential.Reds,
+            labels={'cancelado': 'Taxa de Cancelamento', 'tipo_seguro': 'Tipo de Seguro'},
+            height=400
+        ), use_container_width=True)
+    
+    with col2:
+        st.dataframe(
+            churn_tipo.head(5).reset_index().rename(columns={'cancelado': 'Taxa Cancelamento'})
+            .style
+            .background_gradient(cmap='Reds', subset=['Taxa Cancelamento'])
+            .format({'Taxa Cancelamento': '{:.2%}'}),
+            height=400,
+            use_container_width=True
+        )
+    
+    # Análises segmentadas em abas
+    st.markdown("### 📊 Análise Segmentada")
     tab1, tab2, tab3 = st.tabs(["Faixa Etária", "Profissão", "Estado"])
     
     with tab1:
-        st.bar_chart(df_all.groupby('faixa_etaria')['cancelado'].mean())
+        st.markdown("#### 📉 Taxa de Cancelamento por Faixa Etária")
+        st.plotly_chart(px.bar(
+            churn_faixa_etaria.reset_index(),
+            x='faixa_etaria',
+            y='cancelado',
+            color='faixa_etaria',
+            color_discrete_sequence=px.colors.sequential.Reds,
+            labels={'cancelado': 'Taxa de Cancelamento', 'faixa_etaria': 'Faixa Etária'},
+            height=400
+        ), use_container_width=True)
     
     with tab2:
+        st.markdown("#### 👔 Top 10 Profissões com Maior Churn")
         st.dataframe(
-            df_all.groupby('profissao')['cancelado']
-            .mean().sort_values(ascending=False)
-            .head(10)
-            .reset_index()
-            .rename(columns={'cancelado': 'Taxa de Cancelamento'})
+            churn_profissao.reset_index().rename(columns={'cancelado': 'Taxa Cancelamento'})
+            .style
+            .background_gradient(cmap='Reds', subset=['Taxa Cancelamento'])
+            .format({'Taxa Cancelamento': '{:.2%}'})
+            .set_properties(**{'text-align': 'left'}),
+            height=500,
+            use_container_width=True
         )
     
     with tab3:
-        st.bar_chart(df_all.groupby('estado_residencia')['cancelado'].mean().sort_values(ascending=False))
+        st.markdown("#### 🗺️ Taxa de Cancelamento por Estado")
+        st.plotly_chart(px.bar(
+            churn_estado.reset_index(),
+            x='cancelado',
+            y='estado_residencia',
+            orientation='h',
+            color='cancelado',
+            color_continuous_scale='reds',
+            labels={'cancelado': 'Taxa de Cancelamento', 'estado_residencia': 'Estado'},
+            height=600
+        ), use_container_width=True)
+    
+    # Recomendações de ações
+    st.markdown("### 🚀 Recomendações de Ações")
+    cols = st.columns(3)
+    
+    with cols[0]:
+        st.markdown("**Alto Risco**")
+        st.markdown("""
+        - Contato proativo
+        - Oferta de incentivos
+        - Planos alternativos
+        """)
+    
+    with cols[1]:
+        st.markdown("**Médio Risco**")
+        st.markdown("""
+        - Monitoramento
+        - Campanhas de engajamento
+        - Pesquisa de satisfação
+        """)
+    
+    with cols[2]:
+        st.markdown("**Baixo Risco**")
+        st.markdown("""
+        - Programas de fidelização
+        - Benefícios exclusivos
+        - Upselling
+        """)
 
-    # Perfil ideal
-    st.subheader("Perfil do Cliente Fidelizado")
-    st.dataframe(
-        df_all[~df_all['cancelado']]
-        [['idade', 'renda_mensal', 'qtd_dependentes', 'duracao_contrato']]
-        .mean()
-        .to_frame('Média')
-        .T
-    )
-
-# --- NAVEGAÇÃO ---
-VIEWS = {
-    "🔵 Visão Geral – Saúde da Base": view_visao_geral,
-    "🟡 Perfil do Cliente": view_perfil_cliente,
-    "🔴 Produtos e Planos de Seguro": view_produtos_planos,
-    "🟢 Satisfação e Experiência": view_satisfacao_experiencia,
-    "🟣 Retenção e Churn (Prevenção)": view_retencao_churn,
-    "🟤 Insights e Ações": view_insights_acoes
-}
-
+# --- MAIN ---
 def main():
-    """Função principal que controla a navegação"""
+    try:
+        df_clientes, df_contratos, df_cancelamentos = load_data()
+        df_completo = criar_df_completo(df_clientes, df_contratos, df_cancelamentos)
+    except:
+        return st.stop()
+    
+    VIEWS = {
+        "🔵 Visão Geral": lambda: view_visao_geral(df_clientes, df_contratos, df_cancelamentos),
+        "🟡 Perfil Cliente": lambda: view_perfil_cliente(df_clientes, df_contratos),
+        "🔴 Produtos/Planos": lambda: view_produtos_planos(df_contratos),
+        "🟢 Satisfação": lambda: view_satisfacao_experiencia(df_contratos, df_cancelamentos),
+        "🟣 Retenção/Churn": lambda: view_retencao_churn(df_completo),
+        "🟤 Insights": lambda: view_insights_acoes(df_completo)
+    }
+    
     st.sidebar.title("Navegação")
     view_selecionada = st.sidebar.radio("Escolha uma seção:", list(VIEWS.keys()))
-    
-    # Executa a view selecionada
     VIEWS[view_selecionada]()
 
 if __name__ == "__main__":
