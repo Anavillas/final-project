@@ -122,6 +122,6 @@ def render():
     col2.button("Exportar CSV")
     df_ativos = carregar_view('v_perfil_cliente_enriquecido')
     st.dataframe(df_ativos)
-    st.dataframe(df)
+    st.dataframe()
 if __name__ == "__main__":
     render()
