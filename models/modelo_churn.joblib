@@ -1,0 +1,21 @@
+import pandas as pd
+
+# 1. Copia do dataframe de contratos ativos
+df_pred = df_at.copy()
+
+# 2. Aplica mesma codificação OneHot
+X_pred_encoded = encoder.transform(df_pred)
+
+# 3. Seleciona as mesmas features escolhidas pelo RFE
+X_pred_rfe = X_pred_encoded[:, selected_indices]
+
+# 4. Prediz a probabilidade de cancelamento
+y_pred_proba_ativos = final_model.predict_proba(X_pred_rfe)[:, 1]
+
+# 5. Define threshold e aplica a classificação
+threshold = 0.4
+df_pred["prob_cancelamento"] = y_pred_proba_ativos
+df_pred["tende_cancelar"] = (df_pred["prob_cancelamento"] >= threshold).astype(int)
+
+# 7. (Opcional) Exporta para CSV os clientes em risco
+df_pred[df_pred["tende_cancelar"] == 1].to_csv("clientes_com_risco_cancelamento.csv", index=False)

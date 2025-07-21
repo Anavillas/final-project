@@ -1,0 +1,40 @@
+CREATE OR REPLACE VIEW vw_contratos_ativos_prontos_modelo AS
+SELECT
+  CAST(SUBSTRING(c.id_cliente FROM 2) AS INTEGER) AS id_cliente,
+  
+  -- Variáveis numéricas úteis para modelo
+  EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM cl.data_nascimento) AS idade,
+  c.valor_premio_mensal,
+  cl.renda_mensal,
+
+  -- Score de satisfação (mapeamento manual)
+  CASE 
+    WHEN c.satisfacao_ultima_avaliacao = 'Baixa' THEN 0
+    WHEN c.satisfacao_ultima_avaliacao = 'Média' THEN 1
+    WHEN c.satisfacao_ultima_avaliacao = 'Alta' THEN 2
+    ELSE NULL
+  END AS satisfacao_score,
+
+  -- Duração do contrato em dias
+  DATE_PART('day', c.data_fim - c.data_inicio) AS duracao_dias,
+
+  -- Feature: valor prêmio / renda mensal
+  CASE 
+    WHEN cl.renda_mensal > 0 THEN c.valor_premio_mensal / cl.renda_mensal
+    ELSE NULL
+  END AS valor_premio_sobre_renda,
+
+  -- Feature: interação idade x renda
+  (EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM cl.data_nascimento)) * cl.renda_mensal AS interacao_idade_renda,
+
+  -- Variáveis categóricas que você manteve
+  c.tipo_seguro,
+  c.renovado_automaticamente
+
+FROM contratos c
+JOIN clientes cl ON c.id_cliente = cl.id_cliente
+LEFT JOIN cancelamentos ca ON c.id_contrato = ca.id_contrato
+
+-- Apenas contratos ativos e vigentes
+WHERE ca.id_contrato IS NULL
+  AND CURRENT_DATE BETWEEN c.data_inicio AND c.data_fim;
