@@ -12,6 +12,7 @@ if raiz_projeto not in sys.path:
 import streamlit as st
 from streamlit_card import card
 from backend.data.processed.loading_views import carregar_view
+from backend.data.processed.loading_views import carregar_query
 
 
 def kpi_custom(icon, value, explanation):
@@ -100,28 +101,78 @@ def kpi_custom(icon, value, explanation):
     """, unsafe_allow_html=True)
 
 ## DADOS TRATADOS PARA PASSAR PARA O FRONTEND
-sql = "SELECT AVG(satisfacao) AS satisfacao_media FROM clientes"
+query_total_contratos_ativos = """
+SELECT COUNT(*) AS total_contratos_ativos
+FROM v_contratos_detalhados
+WHERE status_contrato = 'Ativo'
+"""
+df_total_contratos_ativos = carregar_query(query_total_contratos_ativos)
+total_contratos = df_total_contratos_ativos['total_contratos_ativos'].iloc[0]
 
+#---------------------------------------------------------
+#KPI CHURN
+query = """
+SELECT 
+  ROUND(
+    100.0 * SUM(CASE WHEN status_contrato = 'Cancelado' THEN 1 ELSE 0 END) / 
+            SUM(CASE WHEN status_contrato IN ('Cancelado', 'Encerrado') THEN 1 ELSE 0 END)
+  , 2) AS churn_global
+FROM v_contratos_detalhados;
+
+"""
+df_churn = carregar_query(query)
+churn = df_churn['churn_global'].iloc[0]
+#----------------------------------------------------------
+#KPI CLIENTES EM RISCO
+
+#--------------------------------------------------------------------
+
+#KPI CLIENTES ATIVOS
+query = """
+SELECT COUNT(DISTINCT cliente_id) AS total_clientes_ativos
+FROM v_contratos_detalhados
+WHERE status_contrato = 'Ativo';
+"""
+df_clientes_ativos = carregar_query(query)
+clientes_ativos = df_clientes_ativos['total_clientes_ativos'].iloc[0]
+#---------------------------------
+#KPI AVALIAÇÃO
+query= """
+SELECT 
+  ROUND(AVG(nivel_satisfacao_num), 2) AS satisfacao_media
+FROM v_contratos_detalhados
+"""
+df_avl_avg = carregar_query(query)
+avl_avg = df_avl_avg['satisfacao_media'].iloc[0]
 def render():
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        kpi_custom("🚀", "4.5%", "% Churn")
+        kpi_custom("🚀", churn, "% Churn")
     with col2:
-        kpi_custom("💰", "R$ 250,00", "Contratos Ativos")   
+        kpi_custom("💰", total_contratos, "Contratos Ativos")   
     with col3:
         kpi_custom("📈", "7.8%", "Clientes em Risco")   
     with col4:
-        kpi_custom("📉", "2.1%", "Satisfação Média")
+        kpi_custom("📉", avl_avg, "Satisfação Média")
     with col5:
-        kpi_custom("👥", "1.200", "Clientes Ativos")
+        kpi_custom("👥", clientes_ativos, "Clientes Ativos")
 
-    col1, col2 = st.columns(2)
-    
-    col1.title("Clientes em Risco")
-    col2.button("Exportar CSV")
-    df_ativos = carregar_view('v_perfil_cliente_enriquecido')
-    st.dataframe(df_ativos)
-    st.dataframe(df)
+    st.markdown("### 👥 Clientes em Risco")
+
+    # Layout com duas colunas, mas bem próximo
+    col1, col2 = st.columns([6, 1])  # 6:1 para colar mais o botão no título
+
+    with col1:
+        st.markdown("Visualize e exporte os clientes com maior risco de cancelamento:")
+
+    with col2:
+        st.button("📤 Exportar CSV")
+
+    # Carrega os dados da view
+    df_ativos = carregar_view('v_contratos_detalhados')
+
+    # Mostra a tabela
+    st.dataframe(df_ativos, use_container_width=True)
 if __name__ == "__main__":
     render()
