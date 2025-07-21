@@ -158,21 +158,12 @@ def render():
     with col5:
         kpi_custom("👥", clientes_ativos, "Clientes Ativos")
 
-    st.markdown("### 👥 Clientes em Risco")
-
-    # Layout com duas colunas, mas bem próximo
-    col1, col2 = st.columns([6, 1])  # 6:1 para colar mais o botão no título
-
-    with col1:
-        st.markdown("Visualize e exporte os clientes com maior risco de cancelamento:")
-
-    with col2:
-        st.button("📤 Exportar CSV")
-
-    # Carrega os dados da view
-    df_ativos = carregar_view('v_contratos_detalhados')
-
-    # Mostra a tabela
-    st.dataframe(df_ativos, use_container_width=True)
+    col1, col2 = st.columns(2)
+    
+    col1.title("Clientes em Risco")
+    col2.button("Exportar CSV")
+    df_ativos = carregar_view('v_perfil_cliente_enriquecido')
+    st.dataframe(df_ativos)
+    st.dataframe(df)
 if __name__ == "__main__":
     render()

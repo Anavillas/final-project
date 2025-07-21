@@ -2,6 +2,20 @@ from streamlit_option_menu import option_menu
 import streamlit as st
 import  home, clientes, insights, planos
 
+import streamlit as st
+
+# Configuração da página Streamlit
+st.set_page_config(
+    page_title="Análise de Clientes",     # Título da aba do navegador
+    page_icon="🔬",                         # Ícone que aparece na aba e no header
+    layout="wide",                          # Usa todo o espaço horizontal
+    initial_sidebar_state="expanded",      # Sidebar começa recolhida
+    menu_items={                            # Itens do menu de contexto (canto superior direito)
+        'Get help': 'https://github.com/Anavillas/final-project',
+        'Report a bug': 'https://github.com/Anavillas/final-project',
+        'About': "Aplicativo desenvolvido por Ana Carolina Villas, Emily Gabrielly e Gustavo Lamberty Carranza"
+    }
+)
 with st.sidebar:
     selected = option_menu(
         menu_title="Main Menu",
