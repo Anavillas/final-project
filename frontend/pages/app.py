@@ -1,7 +1,9 @@
 from streamlit_option_menu import option_menu
 import streamlit as st
 import  home, clientes, insights, planos
-
+from dotenv import load_dotenv
+import os
+load_dotenv()
 import streamlit as st
 
 # Configuração da página Streamlit
