@@ -1,5 +1,6 @@
 
 
+import pandas as pd
 import sys
 import os
 
@@ -14,6 +15,10 @@ from streamlit_card import card
 from backend.data.processed.loading_views import carregar_view
 from backend.data.processed.loading_views import carregar_query
 
+def carregar_dados_predicao():
+    caminho_csv = "backend/models/clientes_ativos_com_predicao.csv"
+    df = pd.read_csv(caminho_csv)
+    return df
 
 def kpi_custom(icon, value, explanation):
     st.markdown(f"""
@@ -124,7 +129,10 @@ df_churn = carregar_query(query)
 churn = df_churn['churn_global'].iloc[0]
 #----------------------------------------------------------
 #KPI CLIENTES EM RISCO
+df_predicoes = carregar_dados_predicao()
 
+# Filtra só os contratos com cancelamento previsto (exemplo: valor 1)
+clientes_em_risco = df_predicoes[df_predicoes['cancelamento_previsto'] == 1]['cliente_id'].nunique()
 #--------------------------------------------------------------------
 
 #KPI CLIENTES ATIVOS
@@ -152,18 +160,58 @@ def render():
     with col2:
         kpi_custom("💰", total_contratos, "Contratos Ativos")   
     with col3:
-        kpi_custom("📈", "7.8%", "Clientes em Risco")   
+        kpi_custom("📈", clientes_em_risco, "Clientes em Risco")   
     with col4:
         kpi_custom("📉", avl_avg, "Satisfação Média")
     with col5:
         kpi_custom("👥", clientes_ativos, "Clientes Ativos")
+        
+    st.markdown('---')
+    categorias = ['Automotivo', 'Residencial', 'Saúde', 'Vida', 'Empresarial']
+    ativos = [100, 32, 231, 231, 231]
+    risco = [54, 31, 42, 431, 543]
+
+    df_card1 = pd.DataFrame({
+        'Contratos Ativos': ativos,
+        'Contratos em Risco': risco
+    }, index=categorias)
+
+    # Dados do card 2 (Faturamento Mensal)
+    meses = list(range(1,13))
+    faturamento = [200, 400, 300, 600, 700, 500, 800, 900, 700, 650, 600, 620]
+    df_card2 = pd.DataFrame({'Mês': meses, 'Faturamento': faturamento}).set_index('Mês')
+
+    # Layout com duas colunas
+    card1, card2 = st.columns([2, 3])
+
+    with card1:
+        with st.container():
+            st.markdown("### Contratos ativos X Contratos em Risco")
+            st.bar_chart(df_card1)
+            for categoria in categorias:
+                st.write(f"**{categoria}**: {df_card1.loc[categoria, 'Contratos Ativos']} × {df_card1.loc[categoria, 'Contratos em Risco']}")
+
+    # Card 2
+    with card2:
+        with st.container():
+            st.markdown("### Faturamento Mensal")
+            st.write("Faturamento baseado na filtragem escolhida")
+            st.metric(label="Indicators", value=f"{df_card2['Faturamento'].sum():,.2f}", delta="-11.2% per year")
+            st.line_chart(df_card2)
 
     col1, col2 = st.columns(2)
-    
+        
     col1.title("Clientes em Risco")
-    col2.button("Exportar CSV")
-    df_ativos = carregar_view('v_perfil_cliente_enriquecido')
-    st.dataframe(df_ativos)
-    st.dataframe(df)
+        
+    if st.button("Exportar CSV"):
+            st.download_button(
+                label="Download CSV",
+                data=df_predicoes.to_csv(index=False).encode('utf-8'),
+                file_name='clientes_com_risco_cancelamento.csv',
+                mime='text/csv'
+            )
+    st.dataframe(df_predicoes)
+        
+
 if __name__ == "__main__":
     render()

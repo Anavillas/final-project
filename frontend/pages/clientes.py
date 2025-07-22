@@ -13,7 +13,6 @@ if raiz_projeto not in sys.path:
     sys.path.insert(0, raiz_projeto)
 
 def render():
-    st.set_page_config(layout="wide")
     
     try:
         # Carrega os dados
