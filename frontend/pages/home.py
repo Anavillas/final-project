@@ -185,7 +185,7 @@ def render():
     card1, card2 = st.columns([2, 3])
 
     with card1:
-        with st.container():
+        with st.container(border=True):
             st.markdown("### Contratos ativos X Contratos em Risco")
             st.bar_chart(df_card1)
             for categoria in categorias:
@@ -193,7 +193,7 @@ def render():
 
     # Card 2
     with card2:
-        with st.container():
+        with st.container(border=True):
             st.markdown("### Faturamento Mensal")
             st.write("Faturamento baseado na filtragem escolhida")
             st.metric(label="Indicators", value=f"{df_card2['Faturamento'].sum():,.2f}", delta="-11.2% per year")

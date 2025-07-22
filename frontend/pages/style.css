@@ -1,0 +1,32 @@
+/* Cor de fundo azul na sidebar */
+div[data-testid="stSidebar"] {
+    background-color: #3377FF;
+}
+
+/* Estilização geral das abas */
+div[data-testid="stSidebar"] .hover-tab {
+    color: white;  /* Texto branco */
+    font-weight: bold;
+    padding: 12px 20px;
+    border-radius: 8px;
+    margin: 5px 0;
+    transition: 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Hover */
+div[data-testid="stSidebar"] .hover-tab:hover {
+    background-color: #031A45;
+}
+
+/* Aba selecionada */
+div[data-testid="stSidebar"] .hover-tab.selected {
+    background-color: #2e7bcf;
+}
+
+/* Força ícones brancos (usando SVG inline dentro do botão) */
+div[data-testid="stSidebar"] svg {
+    fill: white !important;
+}

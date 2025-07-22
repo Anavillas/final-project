@@ -19,7 +19,7 @@ st.set_page_config(
 with st.sidebar:
     selected = option_menu(
         menu_title="Main Menu",
-        options=["Home", "Planos", "Clientes"],
+        options=["Home", "Planos", "Clientes", "Insights"],
         icons=["house", "clipboard", "people"],
         menu_icon="cast",
         default_index=0,
@@ -53,3 +53,6 @@ elif selected == "Planos":
 
 elif selected == "Clientes":
     clientes.render()
+
+elif selected == "Insights":
+    insights.render()
