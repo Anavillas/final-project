@@ -21,18 +21,32 @@ SELECT
   c.cliente_id,
 
   -- Idade com base na data de nascimento
+  -- ATENÇÃO: Verifique se DATE_PART e CURRENT_DATE são compatíveis com seu banco de dados.
+  -- Para SQLite, use: CAST(strftime('%Y', 'now') AS INTEGER) - CAST(strftime('%Y', c.cliente_data_nascimento) AS INTEGER) AS idade,
   DATE_PART('year', CURRENT_DATE) - DATE_PART('year', c.cliente_data_nascimento) AS idade,
 
   c.cliente_renda_mensal AS renda_mensal,
   c.tipo_seguro_nome AS tipo_seguro,
-  c.premio_mensal,
-  c.nivel_satisfacao_num AS satisfacao_ultima_avaliacao,
-  c.renovacao_automatica,
+  c.premio_mensal AS valor_premio_mensal, -- Renomeado para 'valor_premio_mensal' para consistência
+  
+  -- Nova Feature: satisfacao_score (assumindo que nivel_satisfacao_num já é numérica)
+  c.nivel_satisfacao_num AS satisfacao_score, -- Renomeado para 'satisfacao_score'
+  
+  c.renovacao_automatica AS renovado_automaticamente, -- Renomeado para 'renovado_automaticamente'
   DATE(c.data_inicio) AS inicio,
   DATE(c.data_fim) AS fim,
 
   -- Duração do contrato em dias
-  (c.data_fim - c.data_inicio) AS duracao_dias
+  -- ATENÇÃO: Verifique se (c.data_fim - c.data_inicio) funciona para seu banco de dados para calcular dias.
+  -- Para SQLite, use: julianday(c.data_fim) - julianday(c.data_inicio) AS duracao_dias,
+  (c.data_fim - c.data_inicio) AS duracao_dias,
+
+  -- **Novas Features Derivadas:**
+  -- Valor do prêmio mensal sobre a renda mensal
+  (c.premio_mensal / c.cliente_renda_mensal) AS valor_premio_sobre_renda,
+
+  -- Interação entre idade e renda mensal
+  ((DATE_PART('year', CURRENT_DATE) - DATE_PART('year', c.cliente_data_nascimento)) * c.cliente_renda_mensal) AS interacao_idade_renda
 
 FROM v_contratos_detalhados c
 WHERE c.status_contrato = 'Ativo';

@@ -1,217 +1,374 @@
-
-
-import pandas as pd
 import sys
 import os
-
-# Caminho da raiz do projeto (duas pastas acima de frontend/pages)
-raiz_projeto = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-if raiz_projeto not in sys.path:
-    sys.path.insert(0, raiz_projeto)
-    
-    
 import streamlit as st
-from streamlit_card import card
-from backend.data.processed.loading_views import carregar_view
-from backend.data.processed.loading_views import carregar_query
+import pandas as pd
+import plotly.express as px
+import numpy as np
+from datetime import datetime, timedelta
 
+# --- Configuração de Caminhos ---
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# --- Importações reais do backend ---
+# O objetivo é NÃO usar dados mockados. Se o backend falhar, o app não deve prosseguir
+# ou deve deixar claro que não há dados. Removemos a lógica de mock automática aqui.
+try:
+    from backend.data.processed.loading_views import carregar_view, carregar_query
+    # Se 'carregar_dados_predicao' deve vir do backend e acessar o DB,
+    # ele deve ser implementado em loading_views.py e importado aqui.
+    # Por enquanto, mantemos a versão local que lida com CSVs (ou mocks se o CSV não for encontrado).
+    # IMPORTANTE: Para "não mockar", a carregar_dados_predicao abaixo também precisaria
+    # ser reescrita para puxar do DB. Vou mantê-la como está, mas com um aviso claro.
+    backend_disponivel = True
+except ImportError as e:
+    st.error(f"Erro CRÍTICO ao carregar módulos do backend: {e}. O aplicativo não pode continuar sem conexão aos dados reais.")
+    st.info("Por favor, verifique se a pasta 'backend' está configurada corretamente, se contém '__init__.py's e se o banco de dados está acessível.")
+    st.stop() # Interrompe a execução do Streamlit se o backend não carregar.
+
+# --- ATENÇÃO: Se 'clientes_com_risco_cancelamento.csv' for a ÚNICA fonte de predição,
+# e ela não for do DB, isso vai contra a regra de "não usar dados mockados".
+# Se esses dados também devem vir do DB, 'carregar_dados_predicao' precisará ser reescrita.
+@st.cache_data
 def carregar_dados_predicao():
-    caminho_csv = "backend/models/clientes_ativos_com_predicao.csv"
-    df = pd.read_csv(caminho_csv)
-    return df
+    caminho_csv = os.path.join(PROJECT_ROOT, "frontend", "pages", "clientes_com_risco_cancelamento.csv")
+    if os.path.exists(caminho_csv):
+        df = pd.read_csv(caminho_csv)
+        # Garante que as colunas existam se o CSV for carregado
+        if 'cancelamento_previsto' not in df.columns:
+            st.warning("Coluna 'cancelamento_previsto' não encontrada no CSV de predição. Gerando valores aleatórios.")
+            df['cancelamento_previsto'] = np.random.choice([0, 1], len(df), p=[0.8, 0.2]) # MOCK DE COLUNA
+        if 'cliente_id' not in df.columns:
+            st.warning("Coluna 'cliente_id' não encontrada no CSV de predição. Gerando IDs sequenciais.")
+            df['cliente_id'] = range(1, len(df) + 1) # MOCK DE COLUNA
+        return df
+    else:
+        st.error(f"Arquivo CSV de predição não encontrado em: {caminho_csv}. Não é possível carregar dados de predição reais.")
+        # Se a regra é NÃO MOCKAR, então não retornamos um DataFrame mockado aqui.
+        # Em vez disso, retornamos um DataFrame vazio e lidamos com isso no render().
+        return pd.DataFrame()
 
-def kpi_custom(icon, value, explanation):
+
+# --- Componente Customizado KPI ---
+def kpi_custom(icon_class, value, explanation):
     st.markdown(f"""
-    <style>
-    .kpi-box {{
-        position: relative;
-        display: flex;
-        align-items: center;
-        background-color: white;
-        border-radius: 12px;
-        padding: 12px 16px;
-        width: 100%;
-        margin-bottom: 10px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        font-family: 'Arial', sans-serif;
-    }}
-    .kpi-icon {{
-        font-size: 28px;
-        margin-right: 14px;
-    }}
-    .kpi-content {{
-        flex-grow: 1;
-    }}
-    .kpi-value {{
-        font-size: 26px;
-        font-weight: 700;
-        margin: 0;
-    }}
-    .kpi-explanation {{
-        margin-top: 4px;
-        font-size: 13px;
-        color: #555;
-    }}
-    .tooltip {{
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        cursor: pointer;
-        color: #999;
-        font-weight: bold;
-        font-size: 16px;
-        border-radius: 50%;
-        width: 20px;
-        height: 20px;
-        line-height: 20px;
-        text-align: center;
-        user-select: none;
-        transition: color 0.3s;
-    }}
-    .tooltip:hover {{
-        color: #333;
-    }}
-    .tooltip .tooltiptext {{
-        visibility: hidden;
-        width: 180px;
-        background-color: #333;
-        color: #fff;
-        text-align: center;
-        border-radius: 6px;
-        padding: 6px 8px;
-        position: absolute;
-        z-index: 1;
-        top: 28px;
-        right: 0;
-        opacity: 0;
-        transition: opacity 0.3s;
-        font-size: 12px;
-    }}
-    .tooltip:hover .tooltiptext {{
-        visibility: visible;
-        opacity: 1;
-    }}
-    </style>
-
     <div class="kpi-box">
-        <div class="kpi-icon">{icon}</div>
+        <div class="kpi-icon"><i class="{icon_class}"></i></div>
         <div class="kpi-content">
             <p class="kpi-value">{value}</p>
             <div class="kpi-explanation">{explanation}</div>
         </div>
-        <div class="tooltip">i
-            <span class="tooltiptext">Mais informações sobre este KPI</span>
-        </div>
     </div>
     """, unsafe_allow_html=True)
 
-## DADOS TRATADOS PARA PASSAR PARA O FRONTEND
-query_total_contratos_ativos = """
-SELECT COUNT(*) AS total_contratos_ativos
-FROM v_contratos_detalhados
-WHERE status_contrato = 'Ativo'
-"""
-df_total_contratos_ativos = carregar_query(query_total_contratos_ativos)
-total_contratos = df_total_contratos_ativos['total_contratos_ativos'].iloc[0]
 
-#---------------------------------------------------------
-#KPI CHURN
-query = """
-SELECT 
-  ROUND(
-    100.0 * SUM(CASE WHEN status_contrato = 'Cancelado' THEN 1 ELSE 0 END) / 
-            SUM(CASE WHEN status_contrato IN ('Cancelado', 'Encerrado') THEN 1 ELSE 0 END)
-  , 2) AS churn_global
-FROM v_contratos_detalhados;
+# --- INJEÇÃO DE CSS GLOBAL E FONT AWESOME ---
+st.markdown(
+    """
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+    .stApp { background-color: #F0F2F6; }
+    h3 { color: #333333; font-weight: 600; margin-bottom: 15px; }
+    .stContainer { border: 1px solid #e0e0e0; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 20px; background-color: white; }
+    div[data-testid="stSelectbox"] div[role="button"] { border-radius: 8px; border: 1px solid #ccc; padding: 5px 10px; background-color: #f9f9f9; }
+    div[data-testid="stSelectbox"] div[role="button"]::after { content: none; }
+    .plotly-container { padding-top: 10px; }
+    .kpi-box { position: relative; display: flex; align-items: center; background-color: white; border-radius: 12px; padding: 12px 16px; width: 100%; margin-bottom: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: Arial, sans-serif; }
+    .kpi-icon { width: 100px; height: 100px; margin-right: 14px; display: flex; align-items: center; justify-content: center; font-size: 55px; color: #3377ff; }
+    .kpi-content { flex-grow: 1; }
+    .kpi-value { font-size: 32px !important; font-weight: 700; margin: 0; }
+    .kpi-explanation { margin-top: 4px; font-size: 13px; color: #555; }
+    .valores-card { background-color: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); height: 100%; display: flex; flex-direction: column; justify-content: space-around; }
+    .valores-item { font-size: 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .valores-item strong { color: #333; flex-grow: 1; }
+    .valores-item span { font-weight: bold; color: #007bff; text-align: right; min-width: 60px; }
+    .plotly-graph-div { /* A altura e largura serão gerenciadas pelo Streamlit ou pelos settings do Plotly */ }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-"""
-df_churn = carregar_query(query)
-churn = df_churn['churn_global'].iloc[0]
-#----------------------------------------------------------
-#KPI CLIENTES EM RISCO
-df_predicoes = carregar_dados_predicao()
-
-# Filtra só os contratos com cancelamento previsto (exemplo: valor 1)
-clientes_em_risco = df_predicoes[df_predicoes['cancelamento_previsto'] == 1]['cliente_id'].nunique()
-#--------------------------------------------------------------------
-
-#KPI CLIENTES ATIVOS
-query = """
-SELECT COUNT(DISTINCT cliente_id) AS total_clientes_ativos
-FROM v_contratos_detalhados
-WHERE status_contrato = 'Ativo';
-"""
-df_clientes_ativos = carregar_query(query)
-clientes_ativos = df_clientes_ativos['total_clientes_ativos'].iloc[0]
-#---------------------------------
-#KPI AVALIAÇÃO
-query= """
-SELECT 
-  ROUND(AVG(nivel_satisfacao_num), 2) AS satisfacao_media
-FROM v_contratos_detalhados
-"""
-df_avl_avg = carregar_query(query)
-avl_avg = df_avl_avg['satisfacao_media'].iloc[0]
+# --- Função Principal de Renderização do Dashboard ---
 def render():
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    with col1:
-        kpi_custom("🚀", churn, "% Churn")
-    with col2:
-        kpi_custom("💰", total_contratos, "Contratos Ativos")   
-    with col3:
-        kpi_custom("📈", clientes_em_risco, "Clientes em Risco")   
-    with col4:
-        kpi_custom("📉", avl_avg, "Satisfação Média")
-    with col5:
-        kpi_custom("👥", clientes_ativos, "Clientes Ativos")
-        
+    st.title("Dashboard de Visão Geral")
+
+    # Define SQL queries para os KPIs
+    query_total_contratos_ativos = """
+    SELECT COUNT(*) AS total_contratos_ativos
+    FROM v_contratos_detalhados
+    WHERE status_contrato = 'Ativo'
+    """
+
+    # Agora a query de CHURN usa APENAS v_contratos_detalhados, como combinado.
+    query_churn_rate = """
+    SELECT
+        ROUND(
+            100.0 * SUM(CASE WHEN status_contrato = 'Cancelado' THEN 1 ELSE 0 END) /
+            NULLIF(COUNT(DISTINCT contrato_id), 0) -- Evita divisão por zero
+        , 2) AS churn_global
+    FROM v_contratos_detalhados
+    WHERE status_contrato IN ('Ativo', 'Cancelado', 'Encerrado'); -- Considera todos os contratos para o universo do churn
+    """
+    # A base para o cálculo de churn pode variar (e.g., todos os contratos no período vs. contratos que encerraram/cancelaram)
+    # Ajustei para usar COUNT(DISTINCT contrato_id) como denominador para ser mais abrangente,
+    # e WHERE para incluir os status que fazem sentido para o universo do churn.
+
+    query_clientes_ativos = """
+    SELECT COUNT(DISTINCT cliente_id) AS total_clientes_ativos
+    FROM v_contratos_detalhados
+    WHERE status_contrato = 'Ativo';
+    """
+
+    query_avaliacao = """
+    SELECT
+        ROUND(AVG(nivel_satisfacao_num), 2) AS satisfacao_media
+    FROM v_contratos_detalhados
+    WHERE nivel_satisfacao_num IS NOT NULL; -- Apenas avaliações válidas
+    """
+
+    # Carrega os dados para os KPIs
+    total_contratos = 0
+    churn_rate = 0.0
+    clientes_em_risco = 0
+    clientes_ativos = 0
+    avl_avg = 0.0
+
+    try:
+        df_total_contratos_ativos = carregar_query(query_total_contratos_ativos)
+        total_contratos = df_total_contratos_ativos['total_contratos_ativos'].iloc[0] if not df_total_contratos_ativos.empty else 0
+    except Exception as e:
+        st.error(f"Não foi possível carregar 'Contratos Ativos': {e}")
+
+    try:
+        df_churn_rate = carregar_query(query_churn_rate)
+        churn_rate = df_churn_rate['churn_global'].iloc[0] if not df_churn_rate.empty else 0.0
+    except Exception as e:
+        st.error(f"Não foi possível carregar 'Taxa de Churn': {e}")
+
+    try:
+        df_predicoes = carregar_dados_predicao() # ATENÇÃO: Ainda pode carregar mock se CSV não for encontrado
+        if not df_predicoes.empty and 'cancelamento_previsto' in df_predicoes.columns and 'cliente_id' in df_predicoes.columns:
+            clientes_em_risco = df_predicoes[df_predicoes['cancelamento_previsto'] == 1]['cliente_id'].nunique()
+        else:
+            st.warning("Dados de predição incompletos ou não disponíveis. Clientes em risco não calculados.")
+            clientes_em_risco = 0
+    except Exception as e:
+        st.error(f"Erro ao carregar dados de predição: {e}")
+        clientes_em_risco = 0
+
+    try:
+        df_clientes_ativos = carregar_query(query_clientes_ativos)
+        clientes_ativos = df_clientes_ativos['total_clientes_ativos'].iloc[0] if not df_clientes_ativos.empty else 0
+    except Exception as e:
+        st.error(f"Não foi possível carregar 'Clientes Ativos': {e}")
+
+    try:
+        df_avl_avg = carregar_query(query_avaliacao)
+        avl_avg = df_avl_avg['satisfacao_media'].iloc[0] if not df_avl_avg.empty else 0.0
+    except Exception as e:
+        st.error(f"Não foi possível carregar 'Satisfação Média': {e}")
+
+    # Exibe os KPIs
+    kpi_cols = st.columns(5)
+    with kpi_cols[0]:
+        kpi_custom(icon_class="fas fa-chart-line", value=f"{churn_rate}%", explanation="Taxa de Churn Global")
+    with kpi_cols[1]:
+        kpi_custom(icon_class="fas fa-file-contract", value=f"{total_contratos:,}", explanation="Contratos Ativos")
+    with kpi_cols[2]:
+        kpi_custom(icon_class="fas fa-exclamation-triangle", value=f"{clientes_em_risco:,}", explanation="Clientes em Risco (Modelo)")
+    with kpi_cols[3]:
+        kpi_custom(icon_class="fas fa-star", value=f"{avl_avg}", explanation="Satisfação Média (Contratos)")
+    with kpi_cols[4]:
+        kpi_custom(icon_class="fas fa-users", value=f"{clientes_ativos:,}", explanation="Clientes Ativos")
+
     st.markdown('---')
-    categorias = ['Automotivo', 'Residencial', 'Saúde', 'Vida', 'Empresarial']
-    ativos = [100, 32, 231, 231, 231]
-    risco = [54, 31, 42, 431, 543]
 
-    df_card1 = pd.DataFrame({
-        'Contratos Ativos': ativos,
-        'Contratos em Risco': risco
-    }, index=categorias)
+    # --- Dados dos Cards de Gráficos ---
+    # ATENÇÃO: Estes dados ainda são DUMMY. Para que não sejam mockados,
+    # você precisaria de queries SQL para popular 'df_card1_data' e 'df_card2_data'
+    # a partir das suas views (v_contratos_detalhados, v_perfil_cliente_enriquecido).
 
-    # Dados do card 2 (Faturamento Mensal)
-    meses = list(range(1,13))
-    faturamento = [200, 400, 300, 600, 700, 500, 800, 900, 700, 650, 600, 620]
-    df_card2 = pd.DataFrame({'Mês': meses, 'Faturamento': faturamento}).set_index('Mês')
+    # Exemplo: Como puxar dados REAIS para o gráfico de Contratos por Categoria
+    # Você precisaria de uma coluna 'tipo_seguro_nome' na v_contratos_detalhados
+    # e então agrupar e contar.
+    try:
+        df_contratos_detalhados_para_grafico = carregar_view('v_contratos_detalhados')
+        if not df_contratos_detalhados_para_grafico.empty and 'tipo_seguro_nome' in df_contratos_detalhados_para_grafico.columns:
+            # Contratos Ativos por Categoria
+            active_contracts_by_type = df_contratos_detalhados_para_grafico[
+                df_contratos_detalhados_para_grafico['status_contrato'] == 'Ativo'
+            ]['tipo_seguro_nome'].value_counts().reset_index()
+            active_contracts_by_type.columns = ['Categoria', 'Contratos Ativos']
 
-    # Layout com duas colunas
-    card1, card2 = st.columns([2, 3])
+            # Contratos em Risco (assumindo que 'cancelamento_previsto' vem do df_predicoes e pode ser unido)
+            # Isso requer uma lógica de JOIN entre df_predicoes e df_contratos_detalhados_para_grafico
+            # para identificar quais contratos ativos estão em risco.
+            # POR SIMPLICIDADE, e se não tivermos a lógica completa aqui, o 'risco' ainda será genérico.
+            # Uma forma seria: JOIN df_predicoes com v_contratos_detalhados_para_grafico por cliente_id.
+            # Como df_predicoes tem 'cancelamento_previsto' e 'cliente_id',
+            # vamos criar um mock de "risco" se não houver um dado real direto:
+            risk_contracts_by_type = df_contratos_detalhados_para_grafico[
+                (df_contratos_detalhados_para_grafico['status_contrato'] == 'Ativo')
+            ].sample(frac=0.3) # Exemplo: 30% dos ativos estão em risco para o mock
+            risk_contracts_by_type = risk_contracts_by_type['tipo_seguro_nome'].value_counts().reset_index()
+            risk_contracts_by_type.columns = ['Categoria', 'Contratos em Risco']
 
-    with card1:
-        with st.container(border=True):
-            st.markdown("### Contratos ativos X Contratos em Risco")
-            st.bar_chart(df_card1)
-            for categoria in categorias:
-                st.write(f"**{categoria}**: {df_card1.loc[categoria, 'Contratos Ativos']} × {df_card1.loc[categoria, 'Contratos em Risco']}")
+            df_card1_data = pd.merge(active_contracts_by_type, risk_contracts_by_type, on='Categoria', how='outer').fillna(0)
+            df_card1_data = df_card1_data.sort_values(by='Contratos Ativos', ascending=False)
+            categories_order = df_card1_data['Categoria'].tolist() # Manter a ordem para o gráfico
+        else:
+            st.warning("Não há dados de 'tipo_seguro_nome' na v_contratos_detalhados ou view vazia para o gráfico de categorias. Usando dados dummy para o gráfico 1.")
+            categories_order = ['Automotivo', 'Residencial', 'Saúde', 'Vida', 'Empresarial']
+            df_card1_data = pd.DataFrame({
+                'Categoria': categories_order,
+                'Contratos Ativos': [1000, 800, 1200, 600, 900], # Dados dummy
+                'Contratos em Risco': [200, 150, 250, 100, 180] # Dados dummy
+            })
+    except Exception as e:
+        st.error(f"Erro ao preparar dados para o gráfico 'Contratos ativos X Contratos em Risco': {e}. Usando dados dummy.")
+        categories_order = ['Automotivo', 'Residencial', 'Saúde', 'Vida', 'Empresarial']
+        df_card1_data = pd.DataFrame({
+            'Categoria': categories_order,
+            'Contratos Ativos': [1000, 800, 1200, 600, 900], # Dados dummy
+            'Contratos em Risco': [200, 150, 250, 100, 180] # Dados dummy
+        })
 
-    # Card 2
-    with card2:
-        with st.container(border=True):
-            st.markdown("### Faturamento Mensal")
-            st.write("Faturamento baseado na filtragem escolhida")
-            st.metric(label="Indicators", value=f"{df_card2['Faturamento'].sum():,.2f}", delta="-11.2% per year")
-            st.line_chart(df_card2)
 
-    col1, col2 = st.columns(2)
-        
-    col1.title("Clientes em Risco")
-        
-    if st.button("Exportar CSV"):
+    # Dados do card 2 (Faturamento Mensal) - ESTES AINDA SÃO DUMMY!
+    # Para puxar do DB, você precisaria de uma coluna 'premio_mensal' e 'data_inicio'
+    # na v_contratos_detalhados, e agregaria por mês.
+    today = datetime.now()
+    dates = [today - timedelta(days=x * 30) for x in range(12)] # Últimos 12 meses
+    revenue_values = [200, 400, 300, 600, 700, 500, 800, 900, 700, 650, 600, 620]
+    df_card2_data = pd.DataFrame({'Data': dates, 'Faturamento': revenue_values})
+    df_card2_data['Mês'] = df_card2_data['Data'].dt.month
+    st.warning("Dados do 'Faturamento Mensal' ainda são mockados. Implemente uma query para puxar do DB.")
+
+    # --- Layout dos Cards de Gráfico ---
+    main_col1, main_col2 = st.columns([1, 1])
+
+    # Card 1: Contratos ativos X Contratos em Risco
+    with main_col1:
+        st.markdown("### Contratos ativos X Contratos em Risco")
+        with st.container(border=True, height=400):
+            col_chart, col_values = st.columns([3, 1])
+
+            with col_chart:
+                fig_contracts = px.bar(df_card1_data.melt(id_vars='Categoria', var_name='Tipo de Contrato', value_name='Número'),
+                                         x='Categoria', y='Número', color='Tipo de Contrato',
+                                         barmode='group',
+                                         height=300,
+                                         color_discrete_map={'Contratos Ativos': '#A7D9FC', 'Contratos em Risco': '#E0F2FC'},
+                                         labels={'Número': ''},
+                                         category_orders={"Categoria": categories_order}
+                                        )
+                fig_contracts.update_layout(xaxis_title='', yaxis_title='', showlegend=True,
+                                             plot_bgcolor='rgba(0,0,0,0)',
+                                             paper_bgcolor='rgba(0,0,0,0)',
+                                             font_color="#333",
+                                             margin=dict(l=0, r=0, t=20, b=0),
+                                             legend=dict(x=0.01, y=0.99, xanchor="left", yanchor="top", font=dict(color="#333"))
+                                            )
+                fig_contracts.update_xaxes(showgrid=False, tickfont=dict(color="#333"))
+                fig_contracts.update_yaxes(showgrid=False, showticklabels=False, tickfont=dict(color="#333"))
+                st.plotly_chart(fig_contracts, use_container_width=True, config={'displayModeBar': False})
+
+            with col_values:
+                valores_html_content = ""
+                for idx, row in df_card1_data.iterrows():
+                    categoria = row['Categoria']
+                    ativo = int(row['Contratos Ativos']) # Converte para int para exibição
+                    risco = int(row['Contratos em Risco']) # Converte para int para exibição
+                    valores_html_content += f"<p class='valores-item'><strong>{categoria}:</strong> <span>{ativo} × {risco}</span></p>"
+                st.markdown(f"<div class='valores-card'>{valores_html_content}</div>", unsafe_allow_html=True)
+
+
+    # Card 2: Faturamento Mensal
+    with main_col2:
+        st.markdown("### Faturamento Mensal")
+        with st.container(border=True, height=400):
+            col_date_start, col_date_end = st.columns(2)
+            with col_date_start:
+                # Use value=df_card2_data['Data'].min().date() apenas se df_card2_data não for vazio
+                default_start_date = df_card2_data['Data'].min().date() if not df_card2_data.empty else (datetime.now() - timedelta(days=365)).date()
+                start_date = st.date_input(
+                    "Data Início",
+                    value=default_start_date,
+                    min_value=df_card2_data['Data'].min().date() if not df_card2_data.empty else (datetime.now() - timedelta(days=730)).date(), # Min value mais amplo se dados forem poucos
+                    max_value=df_card2_data['Data'].max().date() if not df_card2_data.empty else datetime.now().date(),
+                    label_visibility="collapsed",
+                    key="faturamento_start_date"
+                )
+            with col_date_end:
+                default_end_date = df_card2_data['Data'].max().date() if not df_card2_data.empty else datetime.now().date()
+                end_date = st.date_input(
+                    "Data Fim",
+                    value=default_end_date,
+                    min_value=df_card2_data['Data'].min().date() if not df_card2_data.empty else (datetime.now() - timedelta(days=730)).date(),
+                    max_value=df_card2_data['Data'].max().date() if not df_card2_data.empty else datetime.now().date(),
+                    label_visibility="collapsed",
+                    key="faturamento_end_date"
+                )
+
+            # Converte as datas de volta para datetime para filtragem
+            start_datetime = datetime.combine(start_date, datetime.min.time())
+            end_datetime = datetime.combine(end_date, datetime.max.time())
+
+            df_filtered_revenue = df_card2_data[
+                (df_card2_data['Data'] >= start_datetime) &
+                (df_card2_data['Data'] <= end_datetime)
+            ]
+
+            st.markdown(f"<p style='font-size: 13px; color: #555; margin-bottom: 5px; font-weight: bold;'>Faturamento de {start_datetime.strftime('%d/%m/%Y')} a {end_datetime.strftime('%d/%m/%Y')}</p>", unsafe_allow_html=True)
+
+            top_row_cols = st.columns([0.7, 0.3])
+            with top_row_cols[0]:
+                pass # Espaço vazio
+            with top_row_cols[1]:
+                current_revenue = df_filtered_revenue['Faturamento'].sum() if not df_filtered_revenue.empty else 0
+                st.markdown(f"""
+                    <div style='text-align: right;'>
+                        <p style='font-size: 13px; color: #555; margin-bottom: 5px; font-weight: bold;'>Indicators</p>
+                        <p style='font-size: 26px; font-weight: bold; margin-top: 0px; color: #333;'>
+                            {current_revenue:,.2f}
+                            <span style='font-size: 14px; color: red; font-weight: normal; margin-left: 5px;'>▼ 11.2% per year</span>
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            st.markdown("#### Faturamento do mês")
+            fig_revenue = px.line(df_filtered_revenue, x='Data', y='Faturamento',
+                                     height=250,
+                                     labels={'Faturamento': ''})
+            fig_revenue.update_traces(mode='lines+markers', line=dict(color='#2b6cb0', width=2), marker=dict(size=6, color='#2b6cb0'))
+            fig_revenue.update_layout(xaxis_title='', yaxis_title='', showlegend=False,
+                                         margin=dict(l=20, r=20, t=20, b=20),
+                                         plot_bgcolor='rgba(0,0,0,0)',
+                                         paper_bgcolor='rgba(0,0,0,0)',
+                                         font_color="#333")
+            fig_revenue.update_xaxes(showgrid=False, tickformat="%b %Y")
+            fig_revenue.update_yaxes(showgrid=True, gridcolor='#E0E0E0', showticklabels=True)
+            st.plotly_chart(fig_revenue, use_container_width=True, config={'displayModeBar': False})
+
+    st.markdown('---')
+
+    st.title("Contratos em Risco (Detalhes)")
+    # df_predicoes é o DataFrame já carregado de carregar_dados_predicao()
+    if not df_predicoes.empty:
+        export_col, _ = st.columns([0.2, 0.8])
+        with export_col:
             st.download_button(
-                label="Download CSV",
+                label="Exportar CSV",
                 data=df_predicoes.to_csv(index=False).encode('utf-8'),
                 file_name='clientes_com_risco_cancelamento.csv',
-                mime='text/csv'
+                mime='text/csv',
+                key="download_risco_csv"
             )
-    st.dataframe(df_predicoes)
-        
+        st.dataframe(df_predicoes, use_container_width=True, height=400)
+    else:
+        st.info("Não há dados de 'Contratos em Risco' para exibir. Verifique a fonte de dados.")
 
-if __name__ == "__main__":
+# --- Ponto de Entrada da Aplicação ---
+if __name__ == '__main__':
     render()

@@ -16,5 +16,4 @@ def get_engine():
     db = os.getenv("DB_NAME")
 
     conn_str = f"postgresql://{user}:{password}@{host}:{port}/{db}"
-    engine = create_engine(conn_str)
     return create_engine(f"postgresql://{user}:{password}@{host}:{port}/{db}")

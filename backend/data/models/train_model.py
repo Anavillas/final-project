@@ -25,14 +25,21 @@ SELECT
 
   c.cliente_renda_mensal AS renda_mensal,
   c.tipo_seguro_nome AS tipo_seguro,
-  c.premio_mensal,
-  c.nivel_satisfacao_num AS satisfacao_ultima_avaliacao,
-  c.renovacao_automatica,
+  c.premio_mensal AS valor_premio_mensal, -- Renomeado para consistência
+  c.nivel_satisfacao_num AS satisfacao_score, -- Renomeado para consistência com seu mapeamento numérico
+  c.renovacao_automatica AS renovado_automaticamente, -- Renomeado para consistência
   DATE(c.data_inicio) AS inicio,
   DATE(c.data_fim) AS fim,
 
   -- Duração do contrato em dias
   (c.data_fim - c.data_inicio) AS duracao_dias,
+
+  -- **NOVAS FEATURES CALCULADAS AQUI:**
+  -- Valor do prêmio mensal sobre a renda mensal
+  (c.premio_mensal / c.cliente_renda_mensal) AS valor_premio_sobre_renda,
+
+  -- Interação entre idade e renda mensal
+  ((DATE_PART('year', CURRENT_DATE) - DATE_PART('year', c.cliente_data_nascimento)) * c.cliente_renda_mensal) AS interacao_idade_renda,
 
   -- Identifica se foi cancelado
   CASE WHEN c.status_contrato = 'Cancelado' THEN 1 ELSE 0 END AS cancelado
