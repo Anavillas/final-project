@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from .data_acess import get_engine
 
+@st.cache_data(ttl=3600)
 def carregar_view(nome_view):
     engine = get_engine()
     if engine is None: # Adiciona verificação para o mock
@@ -10,7 +11,7 @@ def carregar_view(nome_view):
     # Explicitly pass an empty dictionary for params
     df = pd.read_sql_query(query, con=engine, params={}) # Adicione params={} aqui também
     return df
-
+@st.cache_data(ttl=3600)
 def carregar_query(sql_query):
     print("SQL sendo executado:\n", sql_query)
     engine = get_engine()

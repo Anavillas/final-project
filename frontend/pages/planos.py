@@ -1,421 +1,365 @@
+import sys
+import os
+from frontend.styles.css_loader import load_global_css # Importante!
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+from dateutil.relativedelta import relativedelta
 import numpy as np
 from datetime import datetime, timedelta
 
-# Importar funções de acesso a dados
-# Alterado de importação relativa para absoluta para resolver ImportError
-from frontend.data_acess import carregar_view, carregar_query
+# --- Configuração de Caminhos ---
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-# Reutilizar kpi_custom de home.py se existir, ou definir localmente se não
-try:
-    from frontend.pages.home import kpi_custom
-except ImportError:
-    # Definir uma versão local simplificada de kpi_custom se a importação falhar
-    st.warning("kpi_custom não encontrado em home.py. Usando definição local simplificada.")
-    def kpi_custom(icon_class, value, explanation):
-        html_code = f"""
-        <div style="background-color: white; border-radius: 12px; padding: 12px 16px; margin-bottom: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: flex-start;">
-            <div style="width: 55px; height: 55px; margin-right: 14px; display: flex; align-items: center; justify-content: center; font-size: 30px; color: #3377ff; flex-shrink: 0;">
-                <i class="{icon_class}"></i>
-            </div>
-            <div style="flex-grow: 1; text-align: left;">
-                <p style="font-size: 24px; font-weight: 700; margin: 0; color: #111827;">{value}</p>
-                <div style="margin-top: 4px; font-size: 13px; color: #555;">{explanation}</div>
-            </div>
-        </div>
-        """
-        st.markdown(html_code, unsafe_allow_html=True)
+# --- Importações reais do backend ---
+
+from backend.data.processed.loading_views import carregar_view, carregar_query
+from frontend.utils.components import kpi_custom
 
 
-# --- INJEÇÃO DE CSS GLOBAL ---
-st.markdown(
-    """
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <style>
-    body { background-color: #F4F4F5; font-family: 'Segoe UI', sans-serif; }
-    .stApp { background-color: #F4F4F5; }
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+# --- Importação da função de carregamento de CSS global ---
+
+# --- Função para carregar dados de predição (SÓ CSV, SEM GERAÇÃO DE MOCKS) ---
+@st.cache_data
+def carregar_dados_predicao():
+    caminho_csv = os.path.join(PROJECT_ROOT, "frontend", "pages", "clientes_com_risco_cancelamento.csv")
     
-    h3 {
-        color: #333333;
-        font-weight: 600;
-        margin-bottom: 15px;
-    }
-    .main-header {
-        font-size: 26px; color: #111827; font-weight: bold;
-        padding: 1rem 0; margin-bottom: 1rem;
-    }
-    .profile-card {
-        background-color: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        padding: 20px;
-        height: 550px; /* Altura fixa para alinhar os cards */
-        display: flex;
-        flex-direction: column;
-    }
-    .profile-card h4 {
-        color: #333333;
-        font-size: 20px;
-        font-weight: 600;
-        margin-bottom: 15px;
-        text-align: center;
-    }
-    .profile-metric {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-        font-size: 15px;
-        color: #555;
-    }
-    .profile-metric strong {
-        color: #111827;
-    }
-    .profile-chart-placeholder {
-        height: 150px; /* Altura para mini-gráficos */
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        background-color: #F8FAFC;
-        border-radius: 8px;
-        margin-top: 10px;
-        font-size: 14px;
-        color: #6B7280;
-        border: 1px dashed #E0E0E0;
-    }
-    .profile-chart-title {
-        font-size: 14px;
-        font-weight: 600;
-        color: #333;
-        margin-top: 15px;
-        margin-bottom: 5px;
-        text-align: center;
-    }
-    .chart-card {
-        background-color: #FFFFFF;
-        border-radius: 16px;
-        padding: 16px;
-        box-shadow: 0px 2px 8px rgba(0,0,0,0.05);
-        margin-bottom: 1rem;
-        height: 400px; /* Altura fixa */
-        display: flex;
-        flex-direction: column;
-    }
-    .chart-card h3 {
-        color: #111827;
-        margin-bottom: 1rem;
-        font-size: 18px;
-        font-weight: 600;
-    }
-    .chart-card .plotly-empty {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100%;
-        color: #6B7280;
-        font-size: 16px;
-        border: 1px dashed #E0E0E0;
-        border-radius: 8px;
-    }
-    </style>
-    """, unsafe_allow_html=True
-)
+    if not os.path.exists(caminho_csv):
+        st.error(f"Erro: Arquivo CSV de predição não encontrado em: {caminho_csv}. Sem este arquivo, os dados de predição não podem ser carregados.")
+        return pd.DataFrame() # Retorna DataFrame vazio se o arquivo não existir.
 
-# --- PONTO DE ENTRADA DA PÁGINA DE INSIGHTS ---
-def render(): # Renomeado de page_insights() para render()
-    st.markdown("<div class='main-header'>Insights e Análises Estratégicas</div>", unsafe_allow_html=True)
+    df = pd.read_csv(caminho_csv)
 
-    st.markdown("""
-        Bem-vindo à página de insights! Aqui, exploramos dados agregados e analisamos tendências
-        importantes sobre nossos contratos, clientes e cancelamentos, utilizando as views
-        pré-processadas do nosso banco de dados.
-    """)
+    # Validar a presença das colunas críticas do CSV
+    required_cols_csv = ['id_cliente', 'tende_cancelar', 'tipo_seguro']
+    if not all(col in df.columns for col in required_cols_csv):
+        st.error(f"O arquivo CSV '{os.path.basename(caminho_csv)}' não contém todas as colunas necessárias para o dashboard: {', '.join(required_cols_csv)}. Verifique o arquivo.")
+        return pd.DataFrame() # Retorna DataFrame vazio se colunas essenciais estiverem faltando.
+    
+    # Renomear colunas para consistência com o restante do código (se necessário para joins ou lógica)
+    df.rename(columns={'id_cliente': 'cliente_id', 'tipo_seguro': 'tipo_seguro_nome'}, inplace=True)
+    
+    # Certificar que 'tende_cancelar' é numérica (0 ou 1)
+    if 'tende_cancelar' in df.columns:
+        df['tende_cancelar'] = pd.to_numeric(df['tende_cancelar'], errors='coerce').fillna(0).astype(int)
+    
+    return df
 
-    st.sidebar.header("Navegação de Insights")
-    insight_option = st.sidebar.radio(
-        "Selecione o tipo de Insight:",
-        ("Visão Geral de Contratos", "Perfis de Clientes", "Análise de Cancelamentos (Churn)", "Comparativo de Perfis", "Análise de Valor do Cliente")
+# --- Componente Customizado KPI ---
+
+
+
+# --- ATENÇÃO: REMOVA O BLOCO st.markdown COM O CSS AQUI! ---
+# O CSS será carregado pela função load_global_css() agora.
+# st.markdown(""" ... CSS antigo ... """, unsafe_allow_html=True)
+
+
+# --- Função para criar gráfico de barras de motivos de cancelamento ---
+def create_cancellation_reasons_chart(df_cancellation):
+    if df_cancellation.empty or 'motivo_cancelamento_nome' not in df_cancellation.columns:
+        fig = go.Figure()
+        fig.add_annotation(text="Nenhum dado de cancelamento disponível ou coluna 'motivo_cancelamento_nome' ausente.",
+                           xref="paper", yref="paper", showarrow=False,
+                           font=dict(size=14, color="gray"))
+        fig.update_layout(height=250, margin=dict(l=10, r=10, t=50, b=10))
+        return fig
+
+    motivo_df = df_cancellation['motivo_cancelamento_nome'].value_counts().reset_index()
+    motivo_df.columns = ['Motivo', 'Contagem']
+
+    fig = px.bar(motivo_df, x="Contagem", y="Motivo", orientation="h",
+                     title='Motivo de Cancelamento',
+                     labels={'Contagem': 'Número de Cancelamentos', 'Motivo': 'Motivo'},
+                     color_discrete_sequence=px.colors.qualitative.Pastel)
+    fig.update_layout(yaxis={'categoryorder':'total ascending'}, xaxis_title="", yaxis_title="", showlegend=False, height=250)
+    return fig
+
+# --- Função para criar gráfico de histograma de duração de contrato ---
+def create_contract_duration_chart(df_detalhes):
+    if df_detalhes.empty:
+        fig = go.Figure()
+        fig.add_annotation(text="Nenhum dado de duração de contrato disponível",
+                           xref="paper", yref="paper", showarrow=False,
+                           font=dict(size=16, color="gray"))
+        fig.update_layout(height=250, margin=dict(l=10, r=10, t=50, b=10))
+        return fig
+
+    required_cols = ['data_fim', 'data_inicio']
+    if not all(col in df_detalhes.columns for col in required_cols):
+        fig = go.Figure()
+        fig.add_annotation(text=f"Colunas necessárias para duração ({', '.join(required_cols)}) ausentes no df_detalhes.",
+                           xref="paper", yref="paper", showarrow=False,
+                           font=dict(size=14, color="gray"))
+        fig.update_layout(height=250, margin=dict(l=10, r=10, t=50, b=10))
+        return fig
+
+    df_duracao = df_detalhes[df_detalhes['data_fim'].notnull() & df_detalhes['data_inicio'].notnull()].copy()
+    if df_duracao.empty:
+        fig = go.Figure()
+        fig.add_annotation(text="Nenhum dado válido para cálculo de duração (datas nulas)",
+                           xref="paper", yref="paper", showarrow=False,
+                           font=dict(size=16, color="gray"))
+        fig.update_layout(height=250, margin=dict(l=10, r=10, t=50, b=10))
+        return fig
+
+    df_duracao['data_fim'] = pd.to_datetime(df_duracao['data_fim'])
+    df_duracao['data_inicio'] = pd.to_datetime(df_duracao['data_inicio'])
+
+    df_duracao['duracao_meses'] = df_duracao.apply(
+        lambda row: (relativedelta(row['data_fim'], row['data_inicio']).years * 12 +
+                     relativedelta(row['data_fim'], row['data_inicio']).months), axis=1
     )
 
-    if insight_option == "Visão Geral de Contratos":
-        display_contract_insights()
-    elif insight_option == "Perfis de Clientes":
-        display_client_profile_insights()
-    elif insight_option == "Análise de Cancelamentos (Churn)":
-        display_churn_analysis_insights()
-    elif insight_option == "Comparativo de Perfis":
-        display_profile_comparison_insights()
-    elif insight_option == "Análise de Valor do Cliente":
-        display_customer_value_insights()
+    fig = px.histogram(df_duracao, x="duracao_meses", nbins=10,
+                         title='Melhor Duração de Contrato',
+                         labels={'duracao_meses': 'Duração (Meses)', 'count': 'Número de Contratos'},
+                         color_discrete_sequence=px.colors.qualitative.Pastel)
+    fig.update_layout(xaxis_title="", yaxis_title="", showlegend=False, height=250)
+    return fig
 
-def display_contract_insights():
-    st.header("Visão Geral de Contratos")
-    st.write("Explorando dados detalhados de todos os contratos de seguro.")
+# --- Nova Função para Gráfico de Transição de Contratos ---
+def create_contract_transition_chart(df_all_detalhes, current_contract_type):
+    if df_all_detalhes.empty or \
+       not all(col in df_all_detalhes.columns for col in ['cliente_id', 'data_inicio', 'tipo_seguro_nome']):
+        fig = go.Figure()
+        fig.add_annotation(text="Dados insuficientes para o gráfico de transição de contratos.",
+                           xref="paper", yref="paper", showarrow=False,
+                           font=dict(size=14, color="gray"))
+        fig.update_layout(height=350, margin=dict(l=10, r=10, t=50, b=10))
+        return fig
 
-    # Carregar a view v_contratos_detalhados
-    with st.spinner("Carregando dados de contratos..."):
-        df_contratos = carregar_view("v_contratos_detalhados")
+    df_detalhes_copy = df_all_detalhes.copy()
+    df_detalhes_copy['data_inicio'] = pd.to_datetime(df_detalhes_copy['data_inicio'])
 
-    if not df_contratos.empty:
-        st.success(f"Dados carregados com sucesso! Total de {len(df_contratos)} contratos.")
+    df_sorted = df_detalhes_copy.sort_values(by=['cliente_id', 'data_inicio'])
 
-        st.subheader("Distribuição de Status de Contrato")
-        status_counts = df_contratos['status_contrato'].value_counts().reset_index()
-        status_counts.columns = ['Status', 'Quantidade']
-        fig_status = px.bar(status_counts, x='Status', y='Quantidade', color='Status',
-                            title='Contratos por Status', height=350)
-        st.plotly_chart(fig_status, use_container_width=True)
+    transitions = []
+    for client_id in df_sorted['cliente_id'].unique():
+        client_contracts = df_sorted[df_sorted['cliente_id'] == client_id]
+        if len(client_contracts) > 1:
+            for i in range(len(client_contracts) - 1):
+                from_type = client_contracts.iloc[i]['tipo_seguro_nome']
+                to_type = client_contracts.iloc[i+1]['tipo_seguro_nome']
+                if from_type == current_contract_type and from_type != to_type:
+                    transitions.append({'From': from_type, 'To': to_type})
 
-        st.subheader("Prêmio Mensal Médio por Tipo de Seguro")
-        avg_premio_tipo_seguro = df_contratos.groupby('tipo_seguro_nome')['premio_mensal'].mean().reset_index()
-        avg_premio_tipo_seguro.columns = ['Tipo de Seguro', 'Prêmio Mensal Médio']
-        fig_premio = px.bar(avg_premio_tipo_seguro, x='Tipo de Seguro', y='Prêmio Mensal Médio',
-                            title='Prêmio Mensal Médio por Tipo de Seguro', height=350)
-        st.plotly_chart(fig_premio, use_container_width=True)
+    if not transitions:
+        fig = go.Figure()
+        fig.add_annotation(text=f"Nenhuma transição de '{current_contract_type}' para outros tipos de contrato encontrada.",
+                           xref="paper", yref="paper", showarrow=False,
+                           font=dict(size=14, color="gray"))
+        fig.update_layout(height=350, margin=dict(l=10, r=10, t=50, b=10))
+        return fig
 
-        st.subheader("Contratos por Canal de Venda")
-        canal_venda_counts = df_contratos['canal_venda_nome'].value_counts().reset_index()
-        canal_venda_counts.columns = ['Canal de Venda', 'Quantidade']
-        fig_canal = px.pie(canal_venda_counts, values='Quantidade', names='Canal de Venda',
-                           title='Contratos por Canal de Venda', hole=0.3, height=350)
-        st.plotly_chart(fig_canal, use_container_width=True)
+    df_transitions = pd.DataFrame(transitions)
+    
+    # Count transitions
+    transition_counts = df_transitions.groupby(['From', 'To']).size().reset_index(name='Count')
 
-        st.subheader("Últimos 10 Contratos Detalhados (Amostra)")
-        st.dataframe(df_contratos.head(10))
-    else:
-        st.warning("Não foi possível carregar os dados de contratos detalhados ou a view está vazia.")
+    # Prepare data for Sankey
+    all_nodes = pd.concat([transition_counts['From'], transition_counts['To']]).unique()
+    label_map = {label: i for i, label in enumerate(all_nodes)}
 
-def display_client_profile_insights():
-    st.header("Perfis de Clientes")
-    st.write("Analisando o perfil e o comportamento dos nossos clientes.")
+    source = [label_map[s] for s in transition_counts['From']]
+    target = [label_map[t] for t in transition_counts['To']]
+    value = transition_counts['Count']
 
-    # Carregar a view v_perfil_cliente_enriquecido
-    with st.spinner("Carregando dados de perfis de clientes..."):
-        df_clientes = carregar_view("v_perfil_cliente_enriquecido")
+    # Create Sankey diagram
+    fig = go.Figure(data=[go.Sankey(
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color="black", width=0.5),
+            label=list(all_nodes),
+            color="#3377ff"
+        ),
+        link=dict(
+            source=source,
+            target=target,
+            value=value,
+            color="rgba(51, 119, 255, 0.4)"
+        )
+    )])
 
-    if not df_clientes.empty:
-        st.success(f"Dados carregados com sucesso! Total de {len(df_clientes)} clientes.")
+    fig.update_layout(
+        title_text=f"Fluxo de Troca de Contrato a partir de '{current_contract_type}'",
+        font_size=10,
+        height=350,
+        margin=dict(l=10, r=10, t=50, b=10)
+    )
+    return fig
 
-        st.subheader("Distribuição Etária dos Clientes")
-        # Criar faixas etárias
-        bins = [0, 18, 25, 35, 45, 55, 65, 100]
-        labels = ['<18', '18-24', '25-34', '35-44', '45-54', '55-64', '65+']
-        df_clientes['faixa_etaria'] = pd.cut(df_clientes['idade_atual'], bins=bins, labels=labels, right=False)
-        fig_idade = px.bar(df_clientes['faixa_etaria'].value_counts().sort_index().reset_index(),
-                           x='index', y='faixa_etaria', title='Distribuição Etária', height=350)
-        fig_idade.update_layout(xaxis_title="Faixa Etária", yaxis_title="Contagem de Clientes")
-        st.plotly_chart(fig_idade, use_container_width=True)
 
-        st.subheader("Top 10 Clientes por Gasto Mensal Total")
-        top_clientes_gasto = df_clientes.sort_values(by='gasto_mensal_total', ascending=False).head(10)
-        st.dataframe(top_clientes_gasto[['nome', 'gasto_mensal_total', 'total_contratos', 'contratos_ativos']])
+def render():
+    st.title("Detalhes por Tipo de Contrato") # Título da página de Planos
 
-        st.subheader("Distribuição de Clientes por Gênero")
-        genero_counts = df_clientes['cliente_genero'].value_counts().reset_index()
-        genero_counts.columns = ['Gênero', 'Quantidade']
-        fig_genero = px.pie(genero_counts, values='Quantidade', names='Gênero',
-                            title='Clientes por Gênero', hole=0.3, height=350)
-        st.plotly_chart(fig_genero, use_container_width=True)
+    # --- CHAME A FUNÇÃO PARA CARREGAR O CSS GLOBAL AQUI ---
+    load_global_css()
 
-        st.subheader("Distribuição de Clientes por Nível Educacional")
-        educ_counts = df_clientes['cliente_nivel_educacional'].value_counts().reset_index()
-        educ_counts.columns = ['Nível Educacional', 'Quantidade']
-        fig_educ = px.bar(educ_counts, x='Nível Educacional', y='Quantidade',
-                          title='Clientes por Nível Educacional', height=350)
-        st.plotly_chart(fig_educ, use_container_width=True)
+    # --- BUSCAR TIPOS DE SEGURO PARA AS ABAS ---
+    tipos_df = carregar_query("""
+        SELECT DISTINCT tipo_seguro_nome
+        FROM v_contratos_detalhados
+        ORDER BY tipo_seguro_nome;
+    """)
+    
+    if tipos_df.empty:
+        st.warning("Não foi possível carregar os tipos de seguro do banco de dados. Verifique a conexão e os dados em 'v_contratos_detalhados'.")
+        st.info("A aplicação não pode exibir detalhes por tipo de contrato sem dados de tipos de seguro.")
+        return # Sai da função render se não houver tipos para exibir.
+    
+    tab_names = tipos_df['tipo_seguro_nome'].tolist()
 
-    else:
-        st.warning("Não foi possível carregar os dados de perfil de clientes ou a view está vazia.")
+    tabs = st.tabs(tab_names)
 
-def display_churn_analysis_insights():
-    st.header("Análise de Cancelamentos (Churn)")
-    st.write("Foco nos contratos que foram cancelados para identificar padrões e motivos.")
+    # Carrega TODOS os dados detalhados de contratos UMA VEZ para o gráfico de transição.
+    df_all_detalhes_for_transitions = carregar_query("""
+        SELECT cliente_id, data_inicio, tipo_seguro_nome
+        FROM v_contratos_detalhados;
+    """)
+    
+    # Carrega TODOS os dados de predição de risco UMA VEZ. Será filtrado por aba.
+    df_predicoes_global = carregar_dados_predicao()
 
-    # Carregar a view v_analise_churn
-    with st.spinner("Carregando dados de cancelamentos..."):
-        df_churn = carregar_view("v_analise_churn")
 
-    if not df_churn.empty:
-        st.success(f"Dados carregados com sucesso! Total de {len(df_churn)} contratos cancelados.")
+    for i, tab in enumerate(tabs):
+        with tab:
+            contract_type = tab_names[i]
+            st.markdown(f"## Visão Geral - {contract_type}")
+            # --- CARREGAMENTO DE DADOS ESPECÍFICOS DA ABA ---
+            where_clause = f"WHERE tipo_seguro_nome = '{contract_type}'"
 
-        st.subheader("Principais Motivos de Cancelamento")
-        motivo_counts = df_churn['motivo_cancelamento_nome'].value_counts().reset_index()
-        motivo_counts.columns = ['Motivo de Cancelamento', 'Quantidade']
-        fig_motivos = px.bar(motivo_counts, x='Quantidade', y='Motivo de Cancelamento', orientation='h',
-                             title='Principais Motivos de Cancelamento', height=350, color_discrete_sequence=['#FF4B4B'])
-        fig_motivos.update_layout(yaxis={'categoryorder':'total ascending'})
-        st.plotly_chart(fig_motivos, use_container_width=True)
+            # Queries para KPIs e gráficos específicos da aba
+            query_contratos_ativos_tab = f"""
+            SELECT COUNT(*) AS total_contratos_ativos
+            FROM v_contratos_detalhados
+            {where_clause} AND status_contrato = 'Ativo';
+            """
+            query_clientes_ativos_tab = f"""
+            SELECT COUNT(DISTINCT cliente_id) AS total_clientes_ativos
+            FROM v_contratos_detalhados
+            {where_clause} AND status_contrato = 'Ativo';
+            """
+            query_faturamento_tab = f"""
+            SELECT COALESCE(SUM(premio_mensal), 0) AS faturamento_total
+            FROM v_contratos_detalhados
+            {where_clause} AND status_contrato = 'Ativo';
+            """
+            query_churn_tab_calc = f"""
+            SELECT
+                CAST(COUNT(CASE WHEN status_contrato = 'Cancelado' THEN 1 ELSE NULL END) AS REAL) * 100 /
+                NULLIF(COUNT(CASE WHEN status_contrato IN ('Ativo', 'Cancelado', 'Encerrado') THEN 1 ELSE NULL END), 0) AS churn_rate
+            FROM v_contratos_detalhados
+            {where_clause};
+            """
+            query_satisfacao_tab = f"""
+            SELECT COALESCE(ROUND(AVG(nivel_satisfacao_num), 2), 0) AS satisfacao_media
+            FROM v_contratos_detalhados
+            {where_clause} AND nivel_satisfacao_num IS NOT NULL AND nivel_satisfacao_num > 0;
+            """
 
-        st.subheader("Cancelamentos por Tipo de Seguro")
-        churn_tipo_seguro = df_churn['tipo_seguro_nome'].value_counts().reset_index()
-        churn_tipo_seguro.columns = ['Tipo de Seguro', 'Quantidade de Cancelamentos']
-        fig_churn_tipo = px.bar(churn_tipo_seguro, x='Tipo de Seguro', y='Quantidade de Cancelamentos',
-                                title='Cancelamentos por Tipo de Seguro', height=350)
-        st.plotly_chart(fig_churn_tipo, use_container_width=True)
-
-        st.subheader("Cancelamentos por Canal de Cancelamento")
-        canal_cancelamento_counts = df_churn['canal_cancelamento_nome'].value_counts().reset_index()
-        canal_cancelamento_counts.columns = ['Canal de Cancelamento', 'Quantidade']
-        fig_canal_churn = px.pie(canal_cancelamento_counts, values='Quantidade', names='Canal de Cancelamento',
-                                 title='Cancelamentos por Canal de Cancelamento', hole=0.3, height=350)
-        st.plotly_chart(fig_canal_churn, use_container_width=True)
-
-        st.subheader("Taxa de Satisfação dos Clientes que Cancelaram")
-        # Excluir N/A (0) para esta análise
-        satisfaction_churn = df_churn[df_churn['nivel_satisfacao_num'] != 0]['nivel_satisfacao_num'].value_counts().sort_index().reset_index()
-        satisfaction_churn.columns = ['Nível de Satisfação', 'Quantidade']
-        fig_satisfacao_churn = px.bar(satisfaction_churn, x='Nível de Satisfação', y='Quantidade',
-                                      title='Nível de Satisfação dos Clientes Cancelados', height=350)
-        st.plotly_chart(fig_satisfacao_churn, use_container_width=True)
-
-        st.subheader("Tendência de Cancelamentos ao Longo do Tempo")
-        # Assegurar que 'cancelado_em' é do tipo datetime
-        df_churn['cancelado_em'] = pd.to_datetime(df_churn['cancelado_em'])
-        # Agrupar por mês e contar cancelamentos
-        churn_trend = df_churn.set_index('cancelado_em').resample('M').size().reset_index(name='Contagem')
-        churn_trend.columns = ['Data', 'Contagem de Cancelamentos']
-        fig_churn_trend = px.line(churn_trend, x='Data', y='Contagem de Cancelamentos',
-                                  title='Contagem de Cancelamentos Mensais', height=350)
-        fig_churn_trend.update_traces(mode='lines+markers', line=dict(color='#FF4B4B', width=2), marker=dict(size=6, color='#FF4B4B'))
-        st.plotly_chart(fig_churn_trend, use_container_width=True)
-
-        st.subheader("Últimos 10 Cancelamentos (Amostra)")
-        st.dataframe(df_churn.head(10))
-    else:
-        st.warning("Não foi possível carregar os dados de análise de churn ou a view está vazia.")
-
-def display_profile_comparison_insights():
-    st.header("Comparativo de Perfis: Fiéis vs. Canceladores")
-    st.write("Compare as características demográficas e comportamentais de clientes fiéis e aqueles que cancelaram contratos.")
-
-    with st.spinner("Carregando dados para comparação de perfis..."):
-        df_perfil_cliente = carregar_view("v_perfil_cliente_enriquecido")
-        df_contratos_detalhados = carregar_view("v_contratos_detalhados") # Para obter nível de satisfação se necessário
-
-    if not df_perfil_cliente.empty:
-        # Definir clientes fiéis e canceladores com base em v_perfil_cliente_enriquecido
-        df_fieis = df_perfil_cliente[(df_perfil_cliente['contratos_ativos'] > 0) & (df_perfil_cliente['contratos_cancelados'] == 0)].copy()
-        df_canceladores = df_perfil_cliente[df_perfil_cliente['contratos_cancelados'] > 0].copy()
-
-        col_loyal, col_churn = st.columns(2)
-
-        # --- CARD: PERFIL DE CLIENTES FIÉIS ---
-        with col_loyal:
-            with st.container():
-                st.markdown("<div class='profile-card'>", unsafe_allow_html=True)
-                st.markdown("<h4>Perfil de Clientes Fiéis</h4>", unsafe_allow_html=True)
-
-                if not df_fieis.empty:
-                    st.markdown(f"<div class='profile-metric'>Total de Clientes: <strong>{len(df_fieis):,}</strong></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='profile-metric'>Idade Média: <strong>{df_fieis['idade_atual'].mean():.1f}</strong></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='profile-metric'>Rendimento Médio: <strong>R$ {df_fieis['cliente_renda_mensal'].mean():,.2f}</strong></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='profile-metric'>Contratos Ativos Médios: <strong>{df_fieis['contratos_ativos'].mean():.1f}</strong></div>", unsafe_allow_html=True)
-                    
-                    # Gênero
-                    st.markdown("<div class='profile-chart-title'>Gênero</div>", unsafe_allow_html=True)
-                    df_genero_fieis = df_fieis['cliente_genero'].value_counts().reset_index()
-                    df_genero_fieis.columns = ['Gênero', 'Contagem']
-                    if not df_genero_fieis.empty:
-                        fig_genero_fieis = px.pie(df_genero_fieis, values='Contagem', names='Gênero', hole=0.5, height=180)
-                        fig_genero_fieis.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=True)
-                        st.plotly_chart(fig_genero_fieis, use_container_width=True, config={'displayModeBar': False})
-                    else:
-                        st.markdown("<div class='profile-chart-placeholder'>Sem dados de gênero</div>", unsafe_allow_html=True)
-
-                    # Nível Educacional
-                    st.markdown("<div class='profile-chart-title'>Nível Educacional</div>", unsafe_allow_html=True)
-                    df_educ_fieis = df_fieis['cliente_nivel_educacional'].value_counts().reset_index()
-                    df_educ_fieis.columns = ['Nível Educacional', 'Contagem']
-                    if not df_educ_fieis.empty:
-                        fig_educ_fieis = px.bar(df_educ_fieis, x='Nível Educacional', y='Contagem', height=180)
-                        fig_educ_fieis.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
-                        st.plotly_chart(fig_educ_fieis, use_container_width=True, config={'displayModeBar': False})
-                    else:
-                        st.markdown("<div class='profile-chart-placeholder'>Sem dados de educação</div>", unsafe_allow_html=True)
-
-                else:
-                    st.info("Não há clientes fiéis nos dados.")
-                st.markdown("</div>", unsafe_allow_html=True) # Fecha profile-card
-
-        # --- CARD: PERFIL DE CLIENTES CANCELADORES ---
-        with col_churn:
-            with st.container():
-                st.markdown("<div class='profile-card'>", unsafe_allow_html=True)
-                st.markdown("<h4>Perfil de Clientes Canceladores</h4>", unsafe_allow_html=True)
-
-                if not df_canceladores.empty:
-                    st.markdown(f"<div class='profile-metric'>Total de Clientes: <strong>{len(df_canceladores):,}</strong></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='profile-metric'>Idade Média: <strong>{df_canceladores['idade_atual'].mean():.1f}</strong></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='profile-metric'>Rendimento Médio: <strong>R$ {df_canceladores['cliente_renda_mensal'].mean():,.2f}</strong></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='profile-metric'>Contratos Cancelados Médios: <strong>{df_canceladores['contratos_cancelados'].mean():.1f}</strong></div>", unsafe_allow_html=True)
-                    
-                    # Gênero
-                    st.markdown("<div class='profile-chart-title'>Gênero</div>", unsafe_allow_html=True)
-                    df_genero_canceladores = df_canceladores['cliente_genero'].value_counts().reset_index()
-                    df_genero_canceladores.columns = ['Gênero', 'Contagem']
-                    if not df_genero_canceladores.empty:
-                        fig_genero_canceladores = px.pie(df_genero_canceladores, values='Contagem', names='Gênero', hole=0.5, height=180)
-                        fig_genero_canceladores.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=True)
-                        st.plotly_chart(fig_genero_canceladores, use_container_width=True, config={'displayModeBar': False})
-                    else:
-                        st.markdown("<div class='profile-chart-placeholder'>Sem dados de gênero</div>", unsafe_allow_html=True)
-
-                    # Nível Educacional
-                    st.markdown("<div class='profile-chart-title'>Nível Educacional</div>", unsafe_allow_html=True)
-                    df_educ_canceladores = df_canceladores['cliente_nivel_educacional'].value_counts().reset_index()
-                    df_educ_canceladores.columns = ['Nível Educacional', 'Contagem']
-                    if not df_educ_canceladores.empty:
-                        fig_educ_canceladores = px.bar(df_educ_canceladores, x='Nível Educacional', y='Contagem', height=180)
-                        fig_educ_canceladores.update_layout(margin=dict(l=0, r=0, t=0, b=0), showlegend=False)
-                        st.plotly_chart(fig_educ_canceladores, use_container_width=True, config={'displayModeBar': False})
-                    else:
-                        st.markdown("<div class='profile-chart-placeholder'>Sem dados de educação</div>", unsafe_allow_html=True)
-
-                else:
-                    st.info("Não há clientes canceladores nos dados.")
-                st.markdown("</div>", unsafe_allow_html=True) # Fecha profile-card
-    else:
-        st.warning("Não foi possível carregar os dados de perfil de clientes para comparação ou a view está vazia.")
-
-def display_customer_value_insights():
-    st.header("Análise de Valor do Cliente (LTV)")
-    st.write("Compare o valor médio de vida do cliente (LTV) entre clientes fiéis e canceladores, utilizando o gasto mensal total como proxy.")
-
-    with st.spinner("Carregando dados de valor do cliente..."):
-        df_perfil_cliente = carregar_view("v_perfil_cliente_enriquecido")
-
-    if not df_perfil_cliente.empty:
-        df_fieis_ltv = df_perfil_cliente[(df_perfil_cliente['contratos_ativos'] > 0) & (df_perfil_cliente['contratos_cancelados'] == 0)].copy()
-        df_canceladores_ltv = df_perfil_cliente[df_perfil_cliente['contratos_cancelados'] > 0].copy()
-
-        col_ltv = st.columns(1)[0]
-
-        with col_ltv:
-            st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
-            st.markdown("<h3>Valor de Vida do Cliente (LTV) Médio: Fiéis vs. Canceladores</h3>", unsafe_allow_html=True)
+            # Carrega DataFrames para a aba atual
+            df_detalhes_tab = carregar_query(f"SELECT * FROM v_contratos_detalhados {where_clause};")
+            df_churn_reasons_tab = carregar_query(f"SELECT * FROM v_analise_churn {where_clause};")
             
-            ltv_fieis_mean = df_fieis_ltv['gasto_mensal_total'].mean() if not df_fieis_ltv.empty else 0
-            ltv_canceladores_mean = df_canceladores_ltv['gasto_mensal_total'].mean() if not df_canceladores_ltv.empty else 0
-
-            if ltv_fieis_mean > 0 or ltv_canceladores_mean > 0:
-                ltv_data = pd.DataFrame({
-                    'Grupo': ['Fiéis', 'Canceladores'],
-                    'LTV Médio': [ltv_fieis_mean, ltv_canceladores_mean]
-                })
-                fig_ltv = px.bar(ltv_data, x='Grupo', y='LTV Médio',
-                                 title='LTV Médio por Grupo de Clientes', height=350,
-                                 color='Grupo', color_discrete_map={'Fiéis': '#4CAF50', 'Canceladores': '#FF4B4B'})
-                st.plotly_chart(fig_ltv, use_container_width=True)
-            else:
-                st.markdown("<div class='plotly-empty'>Sem dados suficientes para comparar LTV.</div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.warning("Não foi possível carregar os dados de perfil de clientes para análise de LTV ou a view está vazia.")
+            # Filtra os dados de predição global para o tipo de contrato atual da aba
+            # Usa 'tende_cancelar' e 'tipo_seguro_nome' (que é o 'tipo_seguro' renomeado do CSV)
+            df_predicoes_filtered_tab = df_predicoes_global[df_predicoes_global['tipo_seguro_nome'] == contract_type].copy() if not df_predicoes_global.empty else pd.DataFrame()
 
 
-# --- PONTO DE ENTRADA PRINCIPAL (para execução direta do script) ---
+            # --- Calcular KPIs Específicos da Aba ---
+            # Uso de .iloc[0] após checar se não está vazio para segurança
+            contratos_ativos_tab = carregar_query(query_contratos_ativos_tab)['total_contratos_ativos'].iloc[0] if not carregar_query(query_contratos_ativos_tab).empty else 0
+            clientes_ativos_tab = carregar_query(query_clientes_ativos_tab)['total_clientes_ativos'].iloc[0] if not carregar_query(query_clientes_ativos_tab).empty else 0
+            faturamento_tab = carregar_query(query_faturamento_tab)['faturamento_total'].iloc[0] if not carregar_query(query_faturamento_tab).empty else 0.0
+            churn_rate_tab = carregar_query(query_churn_tab_calc)['churn_rate'].iloc[0] if not carregar_query(query_churn_tab_calc).empty else 0.0
+            satisfacao_media_tab = carregar_query(query_satisfacao_tab)['satisfacao_media'].iloc[0] if not carregar_query(query_satisfacao_tab).empty else 0.0
+            
+            # KPI de Clientes em Risco para a aba atual, usando 'tende_cancelar' do CSV
+            # O status_risco não pode ser usado sem a coluna no CSV, então focamos em 'tende_cancelar'
+            at_risk_clients_tab = df_predicoes_filtered_tab[df_predicoes_filtered_tab['tende_cancelar'] == 1]['cliente_id'].nunique() if not df_predicoes_filtered_tab.empty else 0
+
+
+            kpi_cols_tab = st.columns(5)
+            with kpi_cols_tab[0]:
+                kpi_custom(icon_class="fas fa-chart-line", value=f"{churn_rate_tab:.1f}%", explanation="% Churn")
+            with kpi_cols_tab[1]:
+                kpi_custom(icon_class="fas fa-file-contract", value=f"{contratos_ativos_tab:,}", explanation="Contratos Ativos")
+            with kpi_cols_tab[2]:
+                kpi_custom(icon_class="fas fa-user-times", value=f"{at_risk_clients_tab:,}", explanation="Clientes em Risco")
+            with kpi_cols_tab[3]:
+                kpi_custom(icon_class="fas fa-star", value=f"{satisfacao_media_tab:.1f}", explanation="Satisfação Média")
+            with kpi_cols_tab[4]:
+                kpi_custom(icon_class="fas fa-money-check", value=f"R$ {faturamento_tab:,.2f}", explanation="Faturamento Contrato")
+
+            st.markdown("---")
+
+            # Gráficos (Tab-specific)
+            chart_cols_tab = st.columns(2)
+
+            with chart_cols_tab[0]:
+                with st.container(border=True):
+                    st.write("### Motivo de Cancelamento")
+                    st.plotly_chart(create_cancellation_reasons_chart(df_churn_reasons_tab), use_container_width=True, key=f"churn_chart_{contract_type}")
+
+            with chart_cols_tab[1]:
+                with st.container(border=True):
+                    st.write("### Melhor Duração de Contrato")
+                    st.plotly_chart(create_contract_duration_chart(df_detalhes_tab), use_container_width=True, key=f"duration_chart_{contract_type}")
+
+            st.markdown("---")
+
+            # Gráfico de Transição de Contratos (Tab-specific)
+            st.markdown("### Transição de Contratos por Cliente")
+            with st.container(border=True):
+                st.plotly_chart(create_contract_transition_chart(df_all_detalhes_for_transitions, contract_type), use_container_width=True, key=f"transition_chart_{contract_type}")
+
+            st.markdown("---")
+
+            # Contratos em Risco (Table - Tab-specific, using filtered df_predicoes_global)
+            bottom_cols_tab = st.columns([0.7, 0.3])
+            with bottom_cols_tab[0]:
+                st.container(border=True).write(f"### Clientes em Risco para {contract_type}")
+                # Filtra apenas clientes que tendem a cancelar
+                df_risk_display_tab = df_predicoes_filtered_tab[df_predicoes_filtered_tab['tende_cancelar'] == 1].copy()
+                
+                # As colunas agora são 'cliente_id' e 'prob_cancelamento', pois 'cliente_nome', 'status_risco', 'data_fim_contrato_previsao' não estão no CSV.
+                expected_risk_cols = ['cliente_id', 'prob_cancelamento'] # Ajustado para as colunas do CSV
+                
+                if not df_risk_display_tab.empty and all(col in df_risk_display_tab.columns for col in expected_risk_cols):
+                    display_df_tab = df_risk_display_tab[expected_risk_cols]
+                    display_df_tab.columns = ['ID Cliente', 'Prob. Cancelamento'] # Nomes mais amigáveis
+                    
+                    # Formatar a probabilidade para percentual
+                    display_df_tab['Prob. Cancelamento'] = display_df_tab['Prob. Cancelamento'].apply(lambda x: f"{x:.2%}")
+
+                    st.dataframe(display_df_tab, use_container_width=True, hide_index=True, key=f"risk_clients_table_{contract_type}")
+                else:
+                    st.info(f"Nenhum cliente em risco encontrado para {contract_type} ou colunas necessárias ausentes no CSV.")
+                    st.dataframe(pd.DataFrame(), use_container_width=True, hide_index=True, key=f"risk_clients_table_empty_{contract_type}")
+
+
+            with bottom_cols_tab[1]:
+                # --- Preenchimento do card 'Situação Contrato' ---
+                # Agora, contamos clientes que 'tende_cancelar' sem um status_risco
+                clients_predicted_to_cancel_count = 0
+                # O KPI "Contratos a Terminar" foi removido pois 'data_fim_contrato_previsao' não está no CSV.
+
+                if not df_predicoes_filtered_tab.empty:
+                    clients_predicted_to_cancel_count = df_predicoes_filtered_tab[df_predicoes_filtered_tab['tende_cancelar'] == 1].shape[0]
+
+                st.container(border=True).write("### Situação Contrato")
+                st.markdown(f"""
+                <div class="valores-card">
+                    <div class="valores-item"><strong>Clientes a Cancelar (Previsto)</strong> <span>{clients_predicted_to_cancel_count}</span></div>
+                    <div class="valores-item"><strong>Contratos a Terminar</strong> <span>N/A</span></div>
+                    <div class="valores-item"><strong>Ver Detalhes Risco</strong> <span><i class="fas fa-arrow-right"></i></span></div>
+                </div>
+                """, unsafe_allow_html=True)
+
+
 if __name__ == '__main__':
     render()

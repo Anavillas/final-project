@@ -7,120 +7,15 @@ import numpy as np
 import altair as alt
 from backend.data.processed.loading_views import carregar_view
 import time
-from frontend.pages.home import kpi_custom
 
-# --- INJEÇÃO DE CSS GLOBAL ---
-st.markdown(
-    """
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <style>
-    /* Seu CSS existente permanece exatamente igual */
-    .stApp {
-        background-color: #F0F2F6;
-    }
-    h3 {
-        color: #333333;
-        font-weight: 600;
-        margin-bottom: 15px;
-    }
-    .stContainer {
-        border: 1px solid #e0e0e0;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        padding: 20px;
-        background-color: white;
-    }
-    div[data-testid="stSelectbox"] div[role="button"] {
-        border-radius: 8px;
-        border: 1px solid #ccc;
-        padding: 5px 10px;
-        background-color: #f9f9f9;
-    }
-    div[data-testid="stSelectbox"] div[role="button"]::after {
-        content: none;
-    }
-    .plotly-container {
-        padding-top: 10px;
-    }
-    .kpi-box {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        background-color: white;
-        border-radius: 12px;
-        padding: 12px 16px;
-        width: 100%;
-        margin-bottom: 10px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        font-family: Arial, sans-serif;
-    }
-    .kpi-icon {
-        width: 100px;
-        height: 100px;
-        margin-right: 14px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 55px;
-        color: #3377ff;
-    }
-    .kpi-content {
-        flex-grow: 1;
-        text-align: left;
-    }
-    .kpi-value {
-        font-size: 32px !important;
-        font-weight: 700;
-        margin: 0;
-        color: #111827;
-    }
-    .kpi-explanation {
-        margin-top: 4px;
-        font-size: 13px;
-        color: #555;
-    }
-    .chart-container {
-        height: 350px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .metric-box {
-        background-color: #e0f2f7;
-        border-left: 5px solid #64B5F6;
-        border-radius: 5px;
-        padding: 15px;
-        margin-bottom: 10px;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-        display: flex;
-        align-items: center;
-    }
-    .metric-box.inactive-no-risk {
-        border-left: 5px solid #1E90FF;
-    }
-    .metric-box.inactive {
-        border-left: 5px solid #1976D2;
-    }
-    .metric-box.risk {
-        border-left: 5px solid #D32F2F;
-    }
-    .metric-percentage {
-        font-size: 1.8em;
-        font-weight: bold;
-        margin-right: 15px;
-        color: #333;
-    }
-    .metric-label {
-        font-size: 1.1em;
-        color: #555;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
-# Configuração de caminhos
+# --- Importação da função de carregamento de CSS global ---
+from frontend.styles.css_loader import load_global_css # Importante!
+from frontend.utils.components import kpi_custom
+
+
+
+# --- Configuração de caminhos ---
 raiz_projeto = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if raiz_projeto not in sys.path:
     sys.path.insert(0, raiz_projeto)
@@ -200,6 +95,9 @@ def resetar_filtros(df_perfil):
     st.rerun()
 
 def render():
+    # --- CHAME A FUNÇÃO PARA CARREGAR O CSS GLOBAL AQUI ---
+    load_global_css()
+
     try:
         # Carrega os dados com cache
         df_perfil, df_detalhados = load_data()
@@ -234,15 +132,15 @@ def render():
             kpi_custom("fas fa-users", f"{len(df_perfil):,}", "Clientes Totais")
 
         with col2:
-            media_dep = df_perfil['qtd_dependente'].mean()
+            media_dep = df_perfil['qtd_dependente'].mean() if 'qtd_dependente' in df_perfil.columns else 0.0
             kpi_custom("fas fa-child", f"{media_dep:.1f}", "Média Dependentes")
 
         with col3:
-            multi_contr = len(df_perfil[df_perfil['total_contratos'] > 1])
+            multi_contr = len(df_perfil[df_perfil['total_contratos'] > 1]) if 'total_contratos' in df_perfil.columns else 0
             kpi_custom("fas fa-file-contract", f"{multi_contr}", "Clientes +1 Contrato")
 
         with col4:
-            renda_media = f"R${df_perfil['renda_mensal'].mean():,.2f}"
+            renda_media = f"R${df_perfil['renda_mensal'].mean():,.2f}" if 'renda_mensal' in df_perfil.columns and not df_perfil['renda_mensal'].empty else "R$ 0,00"
             kpi_custom("fas fa-money-bill-wave", renda_media, "Renda Média")
 
         st.markdown("---")
@@ -315,42 +213,33 @@ def render():
                     em_risco_percent = 0
                     inativos_sem_risco_percent = 0
                 else:
-                    if 'contratos_ativos' not in df_perfil.columns:
-                        st.warning("Coluna 'contratos_ativos' não encontrada. Usando dados mockados para o gráfico de situação.")
-                        ativos_percent = 60
-                        inativos_percent = 40
-                        em_risco_percent = 20
-                        inativos_sem_risco_percent = 20
-                    else:
-                        clientes_ativos = df_perfil[df_perfil['contratos_ativos'] > 0]
-                        clientes_inativos = df_perfil[df_perfil['contratos_ativos'] == 0]
+                    # Tenta calcular baseado na coluna 'status_cliente' se ela existe
+                    if 'status_cliente' in df_perfil.columns:
+                        total_clientes_situacao = df_perfil['status_cliente'].count() 
 
-                        ativos_percent = round((len(clientes_ativos) / total_clientes) * 100, 1)
+                        if total_clientes_situacao > 0:
+                            count_ativos = df_perfil[df_perfil['status_cliente'] == 'Ativo'].shape[0]
+                            count_inativos = df_perfil[df_perfil['status_cliente'] == 'Inativo'].shape[0]
+                            count_em_risco = df_perfil[df_perfil['status_cliente'] == 'Em risco'].shape[0]
 
-                        if 'status_cliente' in df_perfil.columns:
-                            total_clientes_situacao = df_perfil['status_cliente'].count() 
-
-                            if total_clientes_situacao > 0:
-                                count_ativos = df_perfil[df_perfil['status_cliente'] == 'Ativo'].shape[0]
-                                count_inativos = df_perfil[df_perfil['status_cliente'] == 'Inativo'].shape[0]
-                                count_em_risco = df_perfil[df_perfil['status_cliente'] == 'Em risco'].shape[0]
-
-                                ativos_percent = round((count_ativos / total_clientes_situacao) * 100, 1)
-                                em_risco_percent = round((count_em_risco / total_clientes_situacao) * 100, 1)
-                                inativos_sem_risco_percent = round((count_inativos / total_clientes_situacao) * 100, 1)
-                                inativos_total_percent_for_indicator = em_risco_percent + inativos_sem_risco_percent
-                            else:
-                                ativos_percent = 0
-                                inativos_sem_risco_percent = 0
-                                em_risco_percent = 0
-                                inativos_total_percent_for_indicator = 0
+                            ativos_percent = round((count_ativos / total_clientes_situacao) * 100, 1)
+                            em_risco_percent = round((count_em_risco / total_clientes_situacao) * 100, 1)
+                            # Calculando inativos sem risco
+                            inativos_sem_risco_percent = round((count_inativos / total_clientes_situacao) * 100, 1)
+                            inativos_total_percent_for_indicator = em_risco_percent + inativos_sem_risco_percent
                         else:
-                            st.warning("Coluna 'status_cliente' não encontrada. Usando valores mockados para o gráfico de situação (60% Ativos, 20% Inativos sem risco, 20% Em risco).")
-                            ativos_percent = 60
-                            inativos_percent = 40
-                            em_risco_percent = 20
-                            inativos_sem_risco_percent = 20
-                            inativos_total_percent_for_indicator = inativos_percent
+                            ativos_percent = 0
+                            inativos_sem_risco_percent = 0
+                            em_risco_percent = 0
+                            inativos_total_percent_for_indicator = 0
+                    else:
+                        st.warning("Coluna 'status_cliente' não encontrada. Usando valores mockados para o gráfico de situação (60% Ativos, 20% Inativos sem risco, 20% Em risco).")
+                        ativos_percent = 60
+                        # Estes valores são para o gráfico de pizza
+                        inativos_sem_risco_percent = 20
+                        em_risco_percent = 20
+                        # Para o KPI 'Clientes Inativos', a soma de 'Em risco' + 'Inativos sem risco'
+                        inativos_total_percent_for_indicator = 40 
 
                 df_chart = pd.DataFrame({
                     'Categoria': ['Clientes Ativos', 'Clientes Inativos (sem risco)', 'Em risco'],
@@ -358,7 +247,7 @@ def render():
                 })
 
                 color_scale = alt.Scale(domain=['Clientes Ativos', 'Clientes Inativos (sem risco)', 'Em risco'],
-                                      range=['#6495ED', '#1E90FF', '#DC143C'])
+                                         range=['#6495ED', '#1E90FF', '#DC143C'])
 
                 chart = alt.Chart(df_chart).mark_arc(outerRadius=120, innerRadius=80).encode(
                     theta=alt.Theta(field="Valor", type="quantitative"),
@@ -374,24 +263,25 @@ def render():
 
                 st.altair_chart(chart, use_container_width=True)
 
+                # Aplicando as classes CSS globais aos blocos de métricas
                 st.markdown(f"""
                     <div class="metric-box">
                         <div class="metric-percentage">{ativos_percent}%</div>
                         <div class="metric-label">Clientes Ativos</div>
                     </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
                 st.markdown(f"""
                     <div class="metric-box inactive">
                         <div class="metric-percentage">{inativos_total_percent_for_indicator}%</div>
                         <div class="metric-label">Clientes Inativos</div>
                     </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
                 st.markdown(f"""
                     <div class="metric-box risk">
                         <div class="metric-percentage">{em_risco_percent}%</div>
                         <div class="metric-label">Em risco</div>
                     </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
             
             st.write("")
             
@@ -432,21 +322,23 @@ def render():
                         placeholder="Digite o início do nome..."
                     )
                 
-                if 'genero' in df_perfil.columns:
+                if 'genero' in df_perfil.columns and not df_perfil['genero'].empty:
                     st.session_state.filtros['genero'] = st.multiselect(
                         "Gênero",
                         options=df_perfil['genero'].unique(),
                         default=st.session_state.get('filter_genero', list(df_perfil['genero'].unique()))
                     )
                 
-                if 'idade_atual' in df_perfil.columns:
+                if 'idade_atual' in df_perfil.columns and not df_perfil['idade_atual'].empty:
+                    idade_min_default = int(df_perfil['idade_atual'].min())
+                    idade_max_default = int(df_perfil['idade_atual'].max())
                     idade_min, idade_max = st.slider(
                         "Faixa de Idade",
-                        min_value=int(df_perfil['idade_atual'].min()),
-                        max_value=int(df_perfil['idade_atual'].max()),
+                        min_value=idade_min_default,
+                        max_value=idade_max_default,
                         value=(
-                            st.session_state.get('filter_idade_min', int(df_perfil['idade_atual'].min())),
-                            st.session_state.get('filter_idade_max', int(df_perfil['idade_atual'].max()))
+                            st.session_state.get('filter_idade_min', idade_min_default),
+                            st.session_state.get('filter_idade_max', idade_max_default)
                         )
                     )
                     st.session_state.filtros.update({
@@ -454,21 +346,23 @@ def render():
                         'idade_max': idade_max
                     })
                 
-                if 'nivel_educacional' in df_perfil.columns:
+                if 'nivel_educacional' in df_perfil.columns and not df_perfil['nivel_educacional'].empty:
                     st.session_state.filtros['educacao'] = st.multiselect(
                         "Nível Educacional",
                         options=df_perfil['nivel_educacional'].unique(),
                         default=st.session_state.get('filter_educacao', list(df_perfil['nivel_educacional'].unique()))
                     )
                 
-                if 'qtd_dependente' in df_perfil.columns:
+                if 'qtd_dependente' in df_perfil.columns and not df_perfil['qtd_dependente'].empty:
+                    dep_min_default = int(df_perfil['qtd_dependente'].min())
+                    dep_max_default = int(df_perfil['qtd_dependente'].max())
                     dep_min, dep_max = st.slider(
                         "Número de Dependentes",
-                        min_value=int(df_perfil['qtd_dependente'].min()),
-                        max_value=int(df_perfil['qtd_dependente'].max()),
+                        min_value=dep_min_default,
+                        max_value=dep_max_default,
                         value=(
-                            st.session_state.get('filter_dependentes_min', int(df_perfil['qtd_dependente'].min())),
-                            st.session_state.get('filter_dependentes_max', int(df_perfil['qtd_dependente'].max()))
+                            st.session_state.get('filter_dependentes_min', dep_min_default),
+                            st.session_state.get('filter_dependentes_max', dep_max_default)
                         )
                     )
                     st.session_state.filtros.update({
@@ -476,14 +370,16 @@ def render():
                         'dependentes_max': dep_max
                     })
                 
-                if 'total_contratos' in df_perfil.columns:
+                if 'total_contratos' in df_perfil.columns and not df_perfil['total_contratos'].empty:
+                    contratos_min_default = int(df_perfil['total_contratos'].min())
+                    contratos_max_default = int(df_perfil['total_contratos'].max())
                     contratos_min, contratos_max = st.slider(
                         "Total de Contratos",
-                        min_value=int(df_perfil['total_contratos'].min()),
-                        max_value=int(df_perfil['total_contratos'].max()),
+                        min_value=contratos_min_default,
+                        max_value=contratos_max_default,
                         value=(
-                            st.session_state.get('filter_contratos_min', int(df_perfil['total_contratos'].min())),
-                            st.session_state.get('filter_contratos_max', int(df_perfil['total_contratos'].max()))
+                            st.session_state.get('filter_contratos_min', contratos_min_default),
+                            st.session_state.get('filter_contratos_max', contratos_max_default)
                         )
                     )
                     st.session_state.filtros.update({
@@ -491,14 +387,16 @@ def render():
                         'contratos_max': contratos_max
                     })
 
-                if 'renda_mensal' in df_perfil.columns:
+                if 'renda_mensal' in df_perfil.columns and not df_perfil['renda_mensal'].empty:
+                    renda_min_default = float(df_perfil['renda_mensal'].min())
+                    renda_max_default = float(df_perfil['renda_mensal'].max())
                     renda_min, renda_max = st.slider(
                         "Renda Mensal (R$)",
-                        min_value=float(df_perfil['renda_mensal'].min()),
-                        max_value=float(df_perfil['renda_mensal'].max()),
+                        min_value=renda_min_default,
+                        max_value=renda_max_default,
                         value=(
-                            st.session_state.get('filter_renda_min', float(df_perfil['renda_mensal'].min())),
-                            st.session_state.get('filter_renda_max', float(df_perfil['renda_mensal'].max()))
+                            st.session_state.get('filter_renda_min', renda_min_default),
+                            st.session_state.get('filter_renda_max', renda_max_default)
                         )
                     )
                     st.session_state.filtros.update({
@@ -525,7 +423,7 @@ def render():
             'qtd_dependente', 'total_contratos', 'renda_mensal'
         ] if col in df_filtrado.columns]
 
-        if cols_to_show:
+        if not df_filtrado.empty and cols_to_show:
             st.dataframe(df_filtrado[cols_to_show].head(5000), use_container_width=True, height=400)
             st.download_button(
                 "📥 Exportar Dados",
@@ -533,6 +431,8 @@ def render():
                 file_name="clientes_filtrados.csv",
                 mime="text/csv"
             )
+        else:
+            st.info("Nenhum dado filtrado para exibir ou colunas ausentes.")
 
     except Exception as e:
         st.error(f"Erro: {str(e)}")
