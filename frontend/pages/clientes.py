@@ -413,7 +413,7 @@ def render():
                 else:
                     st.warning("Dados insuficientes para renda por faixa etária.")
 
-        # ========== SEÇÃO DE FILTROS ==========
+# ========== SEÇÃO DE FILTROS ==========
         st.markdown("---")
         st.markdown("### Dados dos Clientes")
 
@@ -423,96 +423,95 @@ def render():
         with filter_container:
             st.header("🔍 Filtros Avançados")
             
+            # Verifica se os filtros foram resetados
+            filtros_resetados = st.session_state.get('filtros_resetados', False)
+            
+            # Formulário para os filtros
             with st.form(key='filters_form'):
-                # Widgets de filtro - agora usando os valores individuais do session_state
+                # Widgets de filtro
                 if 'nome' in df_perfil.columns:
+                    nome_value = '' if filtros_resetados else st.session_state.filtros['nome']
                     st.session_state.filtros['nome'] = st.text_input(
                         "Buscar por nome",
-                        value=st.session_state.get('filter_nome', ''),
+                        value=nome_value,
                         placeholder="Digite o início do nome..."
                     )
                 
                 if 'genero' in df_perfil.columns:
+                    genero_default = list(df_perfil['genero'].unique()) if filtros_resetados else st.session_state.filtros['genero']
                     st.session_state.filtros['genero'] = st.multiselect(
                         "Gênero",
                         options=df_perfil['genero'].unique(),
-                        default=st.session_state.get('filter_genero', list(df_perfil['genero'].unique()))
+                        default=genero_default
                     )
                 
                 if 'idade_atual' in df_perfil.columns:
+                    idade_min_default = int(df_perfil['idade_atual'].min()) if filtros_resetados else st.session_state.filtros['idade_min']
+                    idade_max_default = int(df_perfil['idade_atual'].max()) if filtros_resetados else st.session_state.filtros['idade_max']
                     idade_min, idade_max = st.slider(
                         "Faixa de Idade",
                         min_value=int(df_perfil['idade_atual'].min()),
                         max_value=int(df_perfil['idade_atual'].max()),
-                        value=(
-                            st.session_state.get('filter_idade_min', int(df_perfil['idade_atual'].min())),
-                            st.session_state.get('filter_idade_max', int(df_perfil['idade_atual'].max()))
-                        )
+                        value=(idade_min_default, idade_max_default)
                     )
-                    st.session_state.filtros.update({
-                        'idade_min': idade_min,
-                        'idade_max': idade_max
-                    })
+                    st.session_state.filtros.update({'idade_min': idade_min, 'idade_max': idade_max})
                 
                 if 'nivel_educacional' in df_perfil.columns:
+                    educacao_default = list(df_perfil['nivel_educacional'].unique()) if filtros_resetados else st.session_state.filtros['educacao']
                     st.session_state.filtros['educacao'] = st.multiselect(
                         "Nível Educacional",
                         options=df_perfil['nivel_educacional'].unique(),
-                        default=st.session_state.get('filter_educacao', list(df_perfil['nivel_educacional'].unique()))
+                        default=educacao_default
                     )
                 
                 if 'qtd_dependente' in df_perfil.columns:
+                    dep_min_default = int(df_perfil['qtd_dependente'].min()) if filtros_resetados else st.session_state.filtros['dependentes_min']
+                    dep_max_default = int(df_perfil['qtd_dependente'].max()) if filtros_resetados else st.session_state.filtros['dependentes_max']
                     dep_min, dep_max = st.slider(
                         "Número de Dependentes",
                         min_value=int(df_perfil['qtd_dependente'].min()),
                         max_value=int(df_perfil['qtd_dependente'].max()),
-                        value=(
-                            st.session_state.get('filter_dependentes_min', int(df_perfil['qtd_dependente'].min())),
-                            st.session_state.get('filter_dependentes_max', int(df_perfil['qtd_dependente'].max()))
-                        )
+                        value=(dep_min_default, dep_max_default)
                     )
-                    st.session_state.filtros.update({
-                        'dependentes_min': dep_min,
-                        'dependentes_max': dep_max
-                    })
+                    st.session_state.filtros.update({'dependentes_min': dep_min, 'dependentes_max': dep_max})
                 
                 if 'total_contratos' in df_perfil.columns:
+                    contratos_min_default = int(df_perfil['total_contratos'].min()) if filtros_resetados else st.session_state.filtros['contratos_min']
+                    contratos_max_default = int(df_perfil['total_contratos'].max()) if filtros_resetados else st.session_state.filtros['contratos_max']
                     contratos_min, contratos_max = st.slider(
                         "Total de Contratos",
                         min_value=int(df_perfil['total_contratos'].min()),
                         max_value=int(df_perfil['total_contratos'].max()),
-                        value=(
-                            st.session_state.get('filter_contratos_min', int(df_perfil['total_contratos'].min())),
-                            st.session_state.get('filter_contratos_max', int(df_perfil['total_contratos'].max()))
-                        )
+                        value=(contratos_min_default, contratos_max_default)
                     )
-                    st.session_state.filtros.update({
-                        'contratos_min': contratos_min,
-                        'contratos_max': contratos_max
-                    })
+                    st.session_state.filtros.update({'contratos_min': contratos_min, 'contratos_max': contratos_max})
 
                 if 'renda_mensal' in df_perfil.columns:
+                    renda_min_default = float(df_perfil['renda_mensal'].min()) if filtros_resetados else st.session_state.filtros['renda_min']
+                    renda_max_default = float(df_perfil['renda_mensal'].max()) if filtros_resetados else st.session_state.filtros['renda_max']
                     renda_min, renda_max = st.slider(
                         "Renda Mensal (R$)",
                         min_value=float(df_perfil['renda_mensal'].min()),
                         max_value=float(df_perfil['renda_mensal'].max()),
-                        value=(
-                            st.session_state.get('filter_renda_min', float(df_perfil['renda_mensal'].min())),
-                            st.session_state.get('filter_renda_max', float(df_perfil['renda_mensal'].max()))
-                        )
+                        value=(renda_min_default, renda_max_default)
                     )
-                    st.session_state.filtros.update({
-                        'renda_min': renda_min,
-                        'renda_max': renda_max
-                    })
+                    st.session_state.filtros.update({'renda_min': renda_min, 'renda_max': renda_max})
                 
                 # Botões de ação
                 col1, col2 = st.columns(2)
                 with col1:
                     aplicar_filtros = st.form_submit_button("Aplicar Filtros")
                 with col2:
-                    if st.form_submit_button("🔄 Resetar"):
-                        resetar_filtros(df_perfil)
+                    resetar_filtros_btn = st.form_submit_button("🔄 Resetar")
+            
+            # Lógica do botão de reset (fora do form mas ainda no container)
+            if resetar_filtros_btn:
+                resetar_filtros(df_perfil)
+                st.rerun()
+            
+            # Remove o flag após o uso
+            if 'filtros_resetados' in st.session_state:
+                del st.session_state.filtros_resetados
 
         # Aplica os filtros
         df_filtrado = apply_filters(df_perfil, st.session_state.filtros)
