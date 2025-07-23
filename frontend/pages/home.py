@@ -35,21 +35,8 @@ def carregar_dados_predicao():
     caminho_csv = os.path.join(PROJECT_ROOT, "frontend", "pages", "clientes_com_risco_cancelamento.csv")
     if os.path.exists(caminho_csv):
         df = pd.read_csv(caminho_csv)
-        # Garante que as colunas existam se o CSV for carregado
-        if 'cancelamento_previsto' not in df.columns:
-            st.warning("Coluna 'cancelamento_previsto' não encontrada no CSV de predição. Gerando valores aleatórios.")
-            df['cancelamento_previsto'] = np.random.choice([0, 1], len(df), p=[0.8, 0.2]) # MOCK DE COLUNA
-        if 'cliente_id' not in df.columns:
-            st.warning("Coluna 'cliente_id' não encontrada no CSV de predição. Gerando IDs sequenciais.")
-            df['cliente_id'] = range(1, len(df) + 1) # MOCK DE COLUNA
-        return df
-    else:
-        st.error(f"Arquivo CSV de predição não encontrado em: {caminho_csv}. Não é possível carregar dados de predição reais.")
-        # Se a regra é NÃO MOCKAR, então não retornamos um DataFrame mockado aqui.
-        # Em vez disso, retornamos um DataFrame vazio e lidamos com isso no render().
-        return pd.DataFrame()
-
-
+    return df
+  
 # --- Componente Customizado KPI ---
 def kpi_custom(icon_class, value, explanation):
     st.markdown(f"""
@@ -108,11 +95,8 @@ def render():
             NULLIF(COUNT(DISTINCT contrato_id), 0) -- Evita divisão por zero
         , 2) AS churn_global
     FROM v_contratos_detalhados
-    WHERE status_contrato IN ('Ativo', 'Cancelado', 'Encerrado'); -- Considera todos os contratos para o universo do churn
+    WHERE status_contrato IN ('Cancelado', 'Encerrado');
     """
-    # A base para o cálculo de churn pode variar (e.g., todos os contratos no período vs. contratos que encerraram/cancelaram)
-    # Ajustei para usar COUNT(DISTINCT contrato_id) como denominador para ser mais abrangente,
-    # e WHERE para incluir os status que fazem sentido para o universo do churn.
 
     query_clientes_ativos = """
     SELECT COUNT(DISTINCT cliente_id) AS total_clientes_ativos
@@ -128,55 +112,32 @@ def render():
     """
 
     # Carrega os dados para os KPIs
-    total_contratos = 0
-    churn_rate = 0.0
-    clientes_em_risco = 0
-    clientes_ativos = 0
-    avl_avg = 0.0
+    
+    df_total_contratos_ativos = carregar_query(query_total_contratos_ativos)
+    total_contratos = df_total_contratos_ativos['total_contratos_ativos'].iloc[0] 
+    
+    df_churn_rate = carregar_query(query_churn_rate)
+    churn_rate = df_churn_rate['churn_global'].iloc[0]
+    
+    df_predicoes = carregar_dados_predicao()
+    contratos_em_risco = len(df_predicoes[df_predicoes['tende_cancelar'] == 1])
+    
 
-    try:
-        df_total_contratos_ativos = carregar_query(query_total_contratos_ativos)
-        total_contratos = df_total_contratos_ativos['total_contratos_ativos'].iloc[0] if not df_total_contratos_ativos.empty else 0
-    except Exception as e:
-        st.error(f"Não foi possível carregar 'Contratos Ativos': {e}")
 
-    try:
-        df_churn_rate = carregar_query(query_churn_rate)
-        churn_rate = df_churn_rate['churn_global'].iloc[0] if not df_churn_rate.empty else 0.0
-    except Exception as e:
-        st.error(f"Não foi possível carregar 'Taxa de Churn': {e}")
-
-    try:
-        df_predicoes = carregar_dados_predicao() # ATENÇÃO: Ainda pode carregar mock se CSV não for encontrado
-        if not df_predicoes.empty and 'cancelamento_previsto' in df_predicoes.columns and 'cliente_id' in df_predicoes.columns:
-            clientes_em_risco = df_predicoes[df_predicoes['cancelamento_previsto'] == 1]['cliente_id'].nunique()
-        else:
-            st.warning("Dados de predição incompletos ou não disponíveis. Clientes em risco não calculados.")
-            clientes_em_risco = 0
-    except Exception as e:
-        st.error(f"Erro ao carregar dados de predição: {e}")
-        clientes_em_risco = 0
-
-    try:
-        df_clientes_ativos = carregar_query(query_clientes_ativos)
-        clientes_ativos = df_clientes_ativos['total_clientes_ativos'].iloc[0] if not df_clientes_ativos.empty else 0
-    except Exception as e:
-        st.error(f"Não foi possível carregar 'Clientes Ativos': {e}")
-
-    try:
-        df_avl_avg = carregar_query(query_avaliacao)
-        avl_avg = df_avl_avg['satisfacao_media'].iloc[0] if not df_avl_avg.empty else 0.0
-    except Exception as e:
-        st.error(f"Não foi possível carregar 'Satisfação Média': {e}")
-
-    # Exibe os KPIs
+    df_clientes_ativos = carregar_query(query_clientes_ativos)
+    clientes_ativos = df_clientes_ativos['total_clientes_ativos'].iloc[0]
+    
+    df_avl_avg = carregar_query(query_avaliacao)
+    avl_avg = df_avl_avg['satisfacao_media'].iloc[0] 
+    
+    
     kpi_cols = st.columns(5)
     with kpi_cols[0]:
         kpi_custom(icon_class="fas fa-chart-line", value=f"{churn_rate}%", explanation="Taxa de Churn Global")
     with kpi_cols[1]:
         kpi_custom(icon_class="fas fa-file-contract", value=f"{total_contratos:,}", explanation="Contratos Ativos")
     with kpi_cols[2]:
-        kpi_custom(icon_class="fas fa-exclamation-triangle", value=f"{clientes_em_risco:,}", explanation="Clientes em Risco (Modelo)")
+        kpi_custom(icon_class="fas fa-exclamation-triangle", value=f"{contratos_em_risco:,}", explanation="Contratos em Risco")
     with kpi_cols[3]:
         kpi_custom(icon_class="fas fa-star", value=f"{avl_avg}", explanation="Satisfação Média (Contratos)")
     with kpi_cols[4]:
@@ -201,12 +162,12 @@ def render():
             ]['tipo_seguro_nome'].value_counts().reset_index()
             active_contracts_by_type.columns = ['Categoria', 'Contratos Ativos']
 
-            # Contratos em Risco (assumindo que 'cancelamento_previsto' vem do df_predicoes e pode ser unido)
+            # Contratos em Risco (assumindo que 'tende_cancelar' vem do df_predicoes e pode ser unido)
             # Isso requer uma lógica de JOIN entre df_predicoes e df_contratos_detalhados_para_grafico
             # para identificar quais contratos ativos estão em risco.
             # POR SIMPLICIDADE, e se não tivermos a lógica completa aqui, o 'risco' ainda será genérico.
             # Uma forma seria: JOIN df_predicoes com v_contratos_detalhados_para_grafico por cliente_id.
-            # Como df_predicoes tem 'cancelamento_previsto' e 'cliente_id',
+            # Como df_predicoes tem 'tende_cancelar' e 'cliente_id',
             # vamos criar um mock de "risco" se não houver um dado real direto:
             risk_contracts_by_type = df_contratos_detalhados_para_grafico[
                 (df_contratos_detalhados_para_grafico['status_contrato'] == 'Ativo')
