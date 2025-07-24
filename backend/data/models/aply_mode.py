@@ -8,65 +8,49 @@ if raiz_projeto not in sys.path:
 
 import joblib
 import pandas as pd
-from data.processed.loading_views import carregar_query
+from data.processed.loading_views import carregar_view
 
 # 1. Carrega o modelo salvo
-modelo = joblib.load("backend/models/modelo_completo.pkl")
-encoder = modelo["encoder"]
-clf = modelo["model"]
+modelo_completo = joblib.load("backend/models/modelo_completo.pkl")
+encoder = modelo_completo["encoder"]
+clf = modelo_completo["model"]
 
 # 2. Carrega os dados reais (clientes ativos)
-query = """
-SELECT
-  c.cliente_id,
-
-  -- Idade com base na data de nascimento
-  -- ATENÇÃO: Verifique se DATE_PART e CURRENT_DATE são compatíveis com seu banco de dados.
-  -- Para SQLite, use: CAST(strftime('%Y', 'now') AS INTEGER) - CAST(strftime('%Y', c.cliente_data_nascimento) AS INTEGER) AS idade,
-  DATE_PART('year', CURRENT_DATE) - DATE_PART('year', c.cliente_data_nascimento) AS idade,
-
-  c.cliente_renda_mensal AS renda_mensal,
-  c.tipo_seguro_nome AS tipo_seguro,
-  c.premio_mensal AS valor_premio_mensal, -- Renomeado para 'valor_premio_mensal' para consistência
-  
-  -- Nova Feature: satisfacao_score (assumindo que nivel_satisfacao_num já é numérica)
-  c.nivel_satisfacao_num AS satisfacao_score, -- Renomeado para 'satisfacao_score'
-  
-  c.renovacao_automatica AS renovado_automaticamente, -- Renomeado para 'renovado_automaticamente'
-  DATE(c.data_inicio) AS inicio,
-  DATE(c.data_fim) AS fim,
-
-  -- Duração do contrato em dias
-  -- ATENÇÃO: Verifique se (c.data_fim - c.data_inicio) funciona para seu banco de dados para calcular dias.
-  -- Para SQLite, use: julianday(c.data_fim) - julianday(c.data_inicio) AS duracao_dias,
-  (c.data_fim - c.data_inicio) AS duracao_dias,
-
-  -- **Novas Features Derivadas:**
-  -- Valor do prêmio mensal sobre a renda mensal
-  (c.premio_mensal / c.cliente_renda_mensal) AS valor_premio_sobre_renda,
-
-  -- Interação entre idade e renda mensal
-  ((DATE_PART('year', CURRENT_DATE) - DATE_PART('year', c.cliente_data_nascimento)) * c.cliente_renda_mensal) AS interacao_idade_renda
-
-FROM v_contratos_detalhados c
-WHERE c.status_contrato = 'Ativo';
-"""
-df = carregar_query(query)
+df = carregar_view('v_clientes_para_predicao_final')
 
 # 3. Guarda cliente_id para depois (mantém na cópia original)
+# Não é necessário fazer nada aqui, pois o df original será usado para juntar o resultado.
 
-# 4. Remove colunas não usadas pelo modelo antes do encode
-X = df.drop(columns=["inicio", "fim"], errors="ignore")
+# --- AJUSTE AQUI: Listar APENAS as colunas que foram de fato para o modelo no treino ---
+columns_for_model_input = [
+    "genero",
+    "nivel_educacional",
+    "canal_venda",
+    "tipo_seguro",
+    "renda_mensal",
+    "valor_premio_mensal",
+    "satisfacao_score",
+    "renovado_automaticamente",
+    "duracao_dias",
+    "valor_premio_sobre_renda",
+    "interacao_idade_renda"
+]
+
+# Filtra o dataframe para ter apenas as colunas que o modelo espera
+X_inferencia = df[columns_for_model_input]
 
 # 5. Aplica a transformação usando o encoder salvo
-X_encoded = encoder.transform(X)
+X_encoded_inferencia = encoder.transform(X_inferencia)
 
 # 6. Faz a predição com o modelo
-y_pred = clf.predict(X_encoded)
+y_pred_proba = clf.predict_proba(X_encoded_inferencia)[:, 1]
+threshold = 0.3
+y_pred_com_threshold = (y_pred_proba >= threshold).astype(int)
 
 # 7. Junta as previsões com os dados originais
 df_resultado = df.copy()
-df_resultado["cancelamento_previsto"] = y_pred
+df_resultado["probabilidade_cancelamento"] = y_pred_proba
+df_resultado["cancelamento_previsto"] = y_pred_com_threshold
 
 # 8. Salva o resultado em CSV
 df_resultado.to_csv("backend/models/clientes_ativos_com_predicao.csv", index=False)
