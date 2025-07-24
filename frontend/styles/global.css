@@ -2,14 +2,23 @@
 
 /* --- Estilos Globais do Aplicativo --- */
 .stApp {
-    background-color: #F0F2F6; /* Cor de fundo principal do aplicativo */
-    font-family: 'Inter', sans-serif; /* Mantenha se você estiver usando esta fonte */
-    color: #31333F; /* Cor padrão de texto, se não tiver outra mais específica */
+    background-color: #F0F2F6;
+    /* Cor de fundo principal do aplicativo */
+    font-family: 'Inter', sans-serif;
+    /* Mantenha se você estiver usando esta fonte */
+    color: #31333F;
+    /* Cor padrão de texto, se não tiver outra mais específica */
 }
 
 /* Estilos para títulos (h1, h2, etc.) */
-h1, h2, h3, h4, h5, h6 {
-    color: #333333; /* Cor padrão para todos os títulos */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: #333333;
+    /* Cor padrão para todos os títulos */
     font-weight: 600;
     margin-bottom: 15px;
 }
@@ -18,19 +27,25 @@ h1, h2, h3, h4, h5, h6 {
 .stContainer {
     border: 1px solid #e0e0e0;
     border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05); /* Sombra mais sutil */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    /* Sombra mais sutil */
     padding: 20px;
-    background-color: white; /* Cor de fundo padrão dos cards do Streamlit */
-    margin-bottom: 20px; /* Adiciona um pouco de espaço abaixo dos containers */
+    background-color: white;
+    /* Cor de fundo padrão dos cards do Streamlit */
+    margin-bottom: 20px;
+    /* Adiciona um pouco de espaço abaixo dos containers */
 }
 
 /* Estilo para Selectbox do Streamlit */
 div[data-testid="stSelectbox"] div[role="button"] {
-    border-radius: 8px; /* Borda arredondada */
-    border: 1px solid #ccc; /* Borda sutil */
+    border-radius: 8px;
+    /* Borda arredondada */
+    border: 1px solid #ccc;
+    /* Borda sutil */
     padding: 5px 10px;
     background-color: #f9f9f9;
 }
+
 div[data-testid="stSelectbox"] div[role="button"]::after {
     content: none;
 }
@@ -50,10 +65,11 @@ div[data-testid="stSelectbox"] div[role="button"]::after {
     padding: 10px 12px;
     width: 100%;
     margin-bottom: 10px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     font-family: Arial, sans-serif;
     min-height: 90px;
 }
+
 .kpi-icon {
     min-width: 50px;
     max-width: 80px;
@@ -62,19 +78,23 @@ div[data-testid="stSelectbox"] div[role="button"]::after {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 30px; /* Seu tamanho de ícone desejado */
+    font-size: 30px;
+    /* Seu tamanho de ícone desejado */
     color: #3377ff;
 }
+
 .kpi-content {
     flex-grow: 1;
     min-width: 0;
 }
+
 .kpi-value {
     font-size: 26px !important;
     font-weight: 700;
     margin: 0;
     word-break: break-all;
 }
+
 .kpi-explanation {
     margin-top: 4px;
     font-size: 13px;
@@ -87,12 +107,13 @@ div[data-testid="stSelectbox"] div[role="button"]::after {
     background-color: white;
     border-radius: 8px;
     padding: 15px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: space-around;
 }
+
 .valores-item {
     font-size: 16px;
     margin-bottom: 8px;
@@ -100,10 +121,12 @@ div[data-testid="stSelectbox"] div[role="button"]::after {
     justify-content: space-between;
     align-items: center;
 }
+
 .valores-item strong {
     color: #333;
     flex-grow: 1;
 }
+
 .valores-item span {
     font-weight: bold;
     color: #007bff;
@@ -128,15 +151,18 @@ div[data-testid="stSelectbox"] div[role="button"]::after {
     font-weight: 600;
     transition: all 0.2s ease-in-out;
 }
+
 .stTabs [data-baseweb="tab-list"] button:hover {
     background-color: #f0f2f6;
     color: #333;
 }
+
 .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
     background-color: #007bff;
     color: white;
     border-color: #007bff;
 }
+
 .stTabs [data-baseweb="tab-panel"] {
     background-color: white;
     border: 1px solid #e0e0e0;
@@ -147,17 +173,19 @@ div[data-testid="stSelectbox"] div[role="button"]::after {
 
 /* --- NOVOS ESTILOS DA SIDEBAR (MOVIMENTOS DE app.py) --- */
 [data-testid="stSidebar"] {
-    background-color: #3377FF; /* Cor de fundo da sidebar */
+    background-color: #3377FF;
+    /* Cor de fundo da sidebar */
     padding-top: 20px;
     transition: width 0.3s ease;
 }
 
-[data-testid="stSidebarContent"] > div:first-child {
+[data-testid="stSidebarContent"]>div:first-child {
     padding-top: 0 !important;
 }
 
-[data-testid="stSidebarNav"] > div:first-child {
-    display: none; /* Oculta o primeiro item de navegação automático */
+[data-testid="stSidebarNav"]>div:first-child {
+    display: none;
+    /* Oculta o primeiro item de navegação automático */
 }
 
 .stSidebarNavLink {
@@ -181,13 +209,15 @@ div[data-testid="stSelectbox"] div[role="button"]::after {
 
 .stSidebarNavLink *,
 [data-testid="stSidebarNavLink"] * {
-    color: white !important; /* Cor branca em todos os textos da sidebar */
+    color: white !important;
+    /* Cor branca em todos os textos da sidebar */
     font-size: 18px !important;
     margin: 0;
 }
 
 span[data-testid="stSidebarNavLink-icon"] {
-    display: none !important; /* Remove os ícones do menu */
+    display: none !important;
+    /* Remove os ícones do menu */
 }
 
 /* Layout principal (se o global.css aplicar ao block-container) */
@@ -196,47 +226,66 @@ span[data-testid="stSidebarNavLink-icon"] {
 }
 
 
-/* --- Media Queries para Responsividade --- */
+/*
+=======================================================================
+--- Media Queries para Responsividade (SOLUÇÃO APLICADA AQUI) ---
+=======================================================================
+*/
 @media (max-width: 768px) {
-    /* Ajusta a largura da sidebar em telas menores */
+    .block-container {
+        padding: 1rem;
+        /* Menos padding em telas menores */
+    }
+
+    /* Ajusta a largura da sidebar em telas menores, se necessário */
+    /* Você pode descomentar se quiser que a sidebar se comporte de forma diferente no mobile */
+    /*
     [data-testid="stSidebar"] {
         width: 100% !important;
         min-width: 100% !important;
+    }
+    */
+
+    /*
+     * SOLUÇÃO ROBUSTA: Empilhamento de colunas (st.columns).
+     * Em vez de usar classes instáveis como '.st-emotion-cache-*',
+     * usamos um seletor de atributo que identifica o container de colunas
+     * do Streamlit. Isso é muito mais estável.
+    */
+    [data-testid="stHorizontalBlock"] {
+        flex-direction: column;
+    }
+
+    /* Garante que cada item dentro do container de colunas ocupe 100% da largura */
+    [data-testid="stHorizontalBlock"]>div {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
     }
 
     /* Ajusta o layout dos KPIs para empilhar em telas menores */
     .kpi-box {
         flex-direction: column;
         text-align: center;
-        padding: 10px;
+        padding: 15px;
+        /* Um pouco mais de padding vertical */
         min-height: auto;
     }
+
     .kpi-icon {
         margin-right: 0;
-        margin-bottom: 8px;
-        font-size: 10px;
-        width: auto;
-        height: auto;
+        margin-bottom: 10px;
+        font-size: 28px;
+        /* Ícone um pouco menor e mais proporcional */
     }
+
     .kpi-value {
         font-size: 24px !important;
     }
+
     .kpi-explanation {
         font-size: 12px;
-    }
-
-    /* Força as colunas principais (gráficos) a se empilharem */
-    .st-emotion-cache-nahz7x,
-    .st-emotion-cache-f1gfgd,
-    .st-emotion-cache-1cpxi80, /* Adicione outros seletores se necessário */
-    .st-emotion-cache-1dp5vir { /* Este pode ser o seletor para st.columns */
-        flex-direction: column !important;
-    }
-    .st-emotion-cache-nahz7x > div,
-    .st-emotion-cache-f1gfgd > div,
-    .st-emotion-cache-1cpxi80 > div,
-    .st-emotion-cache-1dp5vir > div {
-        width: 100% !important;
     }
 
     /* Ajustes para o card de valores em telas menores */
